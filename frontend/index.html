@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BeamLab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>BeamLab</h1>
+      <p>SFD · BMD · AFD · Deflection</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-head">
+        <h2>Beam model</h2>
+        <span id="status">Ready</span>
+      </div>
+      <div id="beamCanvas" aria-label="Beam model"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Supports</h2>
+        <button id="addSupport">+ Support</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Type</th><th>Position</th></tr>
+          </thead>
+          <tbody id="supportRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Loads</h2>
+        <button id="addPoint">+ Point load</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Type</th><th>Value</th><th>Position</th></tr>
+          </thead>
+          <tbody id="loadRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <button id="solve">Solve</button>
+      <pre id="result">No analysis yet.</pre>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
