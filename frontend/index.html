@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#101214">
+<meta name="theme-color" content="#f6f8fb">
 <title>Beam Analyzer by Himel · SFD · BMD · AFD · Deflection</title>
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="light">
 <header class="topbar">
   <div class="brand">
-    <div class="logoMark">BL</div>
+    <div class="logoMark" aria-hidden="true">BL</div>
     <div><strong>Beam Analyzer by Himel</strong><small>SFD · BMD · AFD · Deflection</small></div>
   </div>
   <div class="toolbar">
@@ -54,7 +54,7 @@
   <section class="card"><h2>Examples</h2><button class="example full" data-example="simple">8 m simply supported + 10 kN point load</button><button class="example full" data-example="udl">6 m simply supported + 10 kN/m UDL</button><button class="example full" data-example="cantilever">4 m cantilever + 20 kN end load</button></section>
 </aside>
 </main>
-<footer>Beam Analyzer · clean Python structural engine · by Md. Hasanuzzaman Himel</footer>
+<footer>Beam Analyzer · direct-stiffness beam solver · by Md. Hasanuzzaman Himel</footer>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <script src="app.js"></script>
 </body></html>
