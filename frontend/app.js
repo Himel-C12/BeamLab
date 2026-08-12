@@ -1,157 +1,30 @@
 const $ = (q) => document.querySelector(q);
-
-const state = {
-  spans: [{ length: 14, E: 200, I: 100000000 }],
-  supports: [
-    { id: 1, type: 'pin', position: 0, settlement: 0 },
-    { id: 2, type: 'fixed', position: 14, settlement: 0 },
-    { id: 3, type: 'internal_hinge', position: 8, settlement: 0 },
-  ],
-  loads: [
-    { id: 1, type: 'point', value: 8, position: 3 },
-    { id: 2, type: 'point', value: 10, position: 6 },
-    { id: 3, type: 'udl', value: 4, position: 8, to: 14 },
-  ],
-};
-
-let pyodide = null;
-let solverReady = false;
-
-function totalLength() {
-  return state.spans.reduce((s, x) => s + Number(x.length || 0), 0);
+const state = {spans:[{length:14,E:200,I:100000000}],supports:[{id:1,type:'pin',position:0,settlement:0},{id:2,type:'fixed',position:14,settlement:0},{id:3,type:'internal_hinge',position:8,settlement:0}],loads:[{id:1,type:'point',value:8,position:3},{id:2,type:'point',value:10,position:6},{id:3,type:'udl',value:4,position:8,to:14}]};
+let pyodide=null,solverReady=false;
+const totalLength=()=>state.spans.reduce((s,x)=>s+Number(x.length||0),0);
+const esc=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+function renderInputs(){
+ $('#spanRows').innerHTML=state.spans.map((s,i)=>`<tr><td>${i+1}</td><td><input type="number" step="any" data-span="${i}" data-field="length" value="${s.length}"></td><td><input type="number" step="any" data-span="${i}" data-field="E" value="${s.E}"></td><td><input type="number" step="any" data-span="${i}" data-field="I" value="${s.I}"></td><td><button class="danger" data-remove-span="${i}">×</button></td></tr>`).join('');
+ $('#supportRows').innerHTML=state.supports.map((s,i)=>`<tr><td>${i+1}</td><td><select data-support="${i}" data-field="type"><option value="pin" ${s.type==='pin'?'selected':''}>Pin</option><option value="roller" ${s.type==='roller'?'selected':''}>Roller</option><option value="fixed" ${s.type==='fixed'?'selected':''}>Fixed</option><option value="internal_hinge" ${s.type==='internal_hinge'?'selected':''}>Internal Hinge</option></select></td><td><input type="number" step="any" data-support="${i}" data-field="position" value="${s.position}"></td><td><input type="number" step="any" data-support="${i}" data-field="settlement" value="${s.settlement||0}"></td><td><button class="danger" data-remove-support="${i}">×</button></td></tr>`).join('');
+ $('#loadRows').innerHTML=state.loads.map((l,i)=>`<tr><td>${i+1}</td><td>${l.type==='udl'?'UDL':l.type==='moment'?'Moment':'Point'}</td><td><input type="number" step="any" data-load="${i}" data-field="value" value="${l.value}"></td><td><input type="number" step="any" data-load="${i}" data-field="position" value="${l.position}"></td><td>${l.type==='udl'?`<input type="number" step="any" data-load="${i}" data-field="to" value="${l.to}">`:'—'}</td><td><button class="danger" data-remove-load="${i}">×</button></td></tr>`).join('');
 }
-
-function esc(v) {
-  return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+function supportSymbol(type,x,y){
+ if(type==='internal_hinge')return `<g class="hinge-symbol" aria-label="Internal hinge"><circle cx="${x}" cy="${y}" r="12" class="hinge-ring"/><circle cx="${x}" cy="${y}" r="4" class="hinge-core"/></g>`;
+ if(type==='fixed')return `<g class="fixed-symbol"><line x1="${x}" y1="${y-28}" x2="${x}" y2="${y+28}"/><path d="M ${x-20} ${y-22} l20 -8 M ${x-20} ${y-8} l20 -8 M ${x-20} ${y+6} l20 -8 M ${x-20} ${y+20} l20 -8"/></g>`;
+ const tri=`<path d="M ${x-18} ${y+20} L ${x} ${y-10} L ${x+18} ${y+20} Z" class="support-triangle"/>`;
+ return type==='roller'?`${tri}<circle cx="${x-8}" cy="${y+25}" r="5" class="roller"/><circle cx="${x+8}" cy="${y+25}" r="5" class="roller"/>`:tri;
 }
-
-function renderInputs() {
-  $('#spanRows').innerHTML = state.spans.map((s, i) => `
-    <tr><td>${i + 1}</td>
-      <td><input type="number" step="any" data-span="${i}" data-field="length" value="${s.length}"></td>
-      <td><input type="number" step="any" data-span="${i}" data-field="E" value="${s.E}"></td>
-      <td><input type="number" step="any" data-span="${i}" data-field="I" value="${s.I}"></td>
-      <td><button class="danger" data-remove-span="${i}">×</button></td>
-    </tr>`).join('');
-
-  $('#supportRows').innerHTML = state.supports.map((s, i) => `
-    <tr><td>${i + 1}</td>
-      <td><select data-support="${i}" data-field="type">
-        <option value="pin" ${s.type === 'pin' ? 'selected' : ''}>Pin</option>
-        <option value="roller" ${s.type === 'roller' ? 'selected' : ''}>Roller</option>
-        <option value="fixed" ${s.type === 'fixed' ? 'selected' : ''}>Fixed</option>
-        <option value="internal_hinge" ${s.type === 'internal_hinge' ? 'selected' : ''}>Internal Hinge</option>
-      </select></td>
-      <td><input type="number" step="any" data-support="${i}" data-field="position" value="${s.position}"></td>
-      <td><input type="number" step="any" data-support="${i}" data-field="settlement" value="${s.settlement || 0}"></td>
-      <td><button class="danger" data-remove-support="${i}">×</button></td>
-    </tr>`).join('');
-
-  $('#loadRows').innerHTML = state.loads.map((l, i) => `
-    <tr><td>${i + 1}</td><td>${l.type === 'udl' ? 'UDL' : l.type === 'moment' ? 'Moment' : 'Point'}</td>
-      <td><input type="number" step="any" data-load="${i}" data-field="value" value="${l.value}"></td>
-      <td><input type="number" step="any" data-load="${i}" data-field="position" value="${l.position}"></td>
-      <td>${l.type === 'udl' ? `<input type="number" step="any" data-load="${i}" data-field="to" value="${l.to}">` : '—'}</td>
-      <td><button class="danger" data-remove-load="${i}">×</button></td>
-    </tr>`).join('');
+function renderBeam(){
+ const width=1100,height=260,pad=70,beamY=105,L=Math.max(totalLength(),1),sx=(width-2*pad)/L,X=p=>pad+Number(p)*sx;
+ const supports=state.supports.map((s,i)=>{const x=X(s.position),label=s.type==='internal_hinge'?`H${i+1} · Internal Hinge`:`S${i+1} · ${s.type[0].toUpperCase()+s.type.slice(1)}`;return `<g>${supportSymbol(s.type,x,beamY)}<circle cx="${x}" cy="${beamY}" r="9" class="node"/><text x="${x}" y="${beamY+50}" class="support-label" text-anchor="middle">${esc(label)}</text><text x="${x}" y="${beamY+67}" class="position-label" text-anchor="middle">@ ${s.position} m</text></g>`}).join('');
+ const loads=state.loads.map(l=>{const x=X(l.position);if(l.type==='moment')return `<g class="moment-load"><path d="M ${x+14} ${beamY-10} A 18 18 0 1 0 ${x-5} ${beamY-17}"/><text x="${x}" y="30" text-anchor="middle">${l.value} kN·m</text></g>`;if(l.type==='udl'){const x2=X(l.to);let arrows='';for(let a=x;a<=x2+1;a+=Math.max(25,(x2-x)/12))arrows+=`<line x1="${a}" y1="55" x2="${a}" y2="${beamY-5}"/><path d="M ${a-4} ${beamY-11} L ${a} ${beamY-3} L ${a+4} ${beamY-11}"/>`;return `<g class="udl-load"><line x1="${x}" y1="55" x2="${x2}" y2="55"/><text x="${(x+x2)/2}" y="40" text-anchor="middle">−${l.value} kN/m</text>${arrows}</g>`}return `<g class="point-load"><line x1="${x}" y1="25" x2="${x}" y2="${beamY-4}"/><path d="M ${x-6} ${beamY-14} L ${x} ${beamY-3} L ${x+6} ${beamY-14}"/><text x="${x}" y="20" text-anchor="middle">−${l.value} kN</text></g>`}).join('');
+ $('#beamCanvas').innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Beam model">${loads}<line x1="${pad}" y1="${beamY}" x2="${width-pad}" y2="${beamY}" class="beam-line"/>${supports}<line x1="${pad}" y1="${beamY+100}" x2="${width-pad}" y2="${beamY+100}" class="dimension-line"/><text x="${width/2}" y="${beamY+125}" class="dimension-text" text-anchor="middle">${L} m</text></svg>`;
 }
-
-function supportSymbol(type, x, y) {
-  if (type === 'internal_hinge') {
-    return `<g class="hinge-symbol" aria-label="Internal hinge">
-      <circle cx="${x}" cy="${y}" r="12" class="hinge-ring"/>
-      <circle cx="${x}" cy="${y}" r="4" class="hinge-core"/>
-    </g>`;
-  }
-  if (type === 'fixed') return `<g class="fixed-symbol"><line x1="${x}" y1="${y-28}" x2="${x}" y2="${y+28}"/><path d="M ${x-20} ${y-22} l20 -8 M ${x-20} ${y-8} l20 -8 M ${x-20} ${y+6} l20 -8 M ${x-20} ${y+20} l20 -8"/></g>`;
-  const tri = `<path d="M ${x-18} ${y+20} L ${x} ${y-10} L ${x+18} ${y+20} Z" class="support-triangle"/>`;
-  return type === 'roller' ? `${tri}<circle cx="${x-8}" cy="${y+25}" r="5" class="roller"/><circle cx="${x+8}" cy="${y+25}" r="5" class="roller"/>` : tri;
-}
-
-function renderBeam() {
-  const width = 1100, height = 260, pad = 70, beamY = 105;
-  const L = Math.max(totalLength(), 1);
-  const sx = (width - 2 * pad) / L;
-  const X = (p) => pad + Number(p) * sx;
-  const supports = state.supports.map((s, i) => {
-    const x = X(s.position);
-    const symbol = supportSymbol(s.type, x, beamY);
-    const label = s.type === 'internal_hinge' ? `H${i + 1} · Internal Hinge` : `S${i + 1} · ${s.type[0].toUpperCase() + s.type.slice(1)}`;
-    return `<g><circle cx="${x}" cy="${beamY}" r="9" class="node"/><text x="${x}" y="${beamY+50}" class="support-label" text-anchor="middle">${esc(label)}</text><text x="${x}" y="${beamY+67}" class="position-label" text-anchor="middle">@ ${s.position} m</text>${symbol}</g>`;
-  }).join('');
-  const loads = state.loads.map(l => {
-    const x = X(l.position);
-    if (l.type === 'moment') return `<g class="moment-load"><circle cx="${x}" cy="${beamY}" r="18"/><path d="M ${x+14} ${beamY-10} A 18 18 0 1 0 ${x-5} ${beamY-17}"/><text x="${x}" y="30" text-anchor="middle">${l.value} kN·m</text></g>`;
-    if (l.type === 'udl') {
-      const x2 = X(l.to);
-      let arrows = '';
-      for (let a=x; a<=x2+1; a+=Math.max(25,(x2-x)/12)) arrows += `<line x1="${a}" y1="55" x2="${a}" y2="${beamY-5}"/><path d="M ${a-4} ${beamY-11} L ${a} ${beamY-3} L ${a+4} ${beamY-11}"/>`;
-      return `<g class="udl-load"><line x1="${x}" y1="55" x2="${x2}" y2="55"/><text x="${(x+x2)/2}" y="40" text-anchor="middle">−${l.value} kN/m</text>${arrows}</g>`;
-    }
-    return `<g class="point-load"><line x1="${x}" y1="25" x2="${x}" y2="${beamY-4}"/><path d="M ${x-6} ${beamY-14} L ${x} ${beamY-3} L ${x+6} ${beamY-14}"/><text x="${x}" y="20" text-anchor="middle">−${l.value} kN</text></g>`;
-  }).join('');
-  $('#beamCanvas').innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Beam model">${loads}<line x1="${pad}" y1="${beamY}" x2="${width-pad}" y2="${beamY}" class="beam-line"/>${supports}<line x1="${pad}" y1="${beamY+100}" x2="${width-pad}" y2="${beamY+100}" class="dimension-line"/><text x="${width/2}" y="${beamY+125}" class="dimension-text" text-anchor="middle">${L} m</text></svg>`;
-}
-
-function render() { renderInputs(); renderBeam(); }
-
-function chart(el, samples, key, label, unit, jumps=[]) {
-  if (!samples.length) { el.innerHTML = ''; return; }
-  const W=760,H=280,p=45,xs=samples.map(s=>s.x),ys=samples.map(s=>s[key]);
-  const xmin=Math.min(...xs),xmax=Math.max(...xs), ymin=Math.min(0,...ys),ymax=Math.max(0,...ys);
-  const X=x=>p+(x-xmin)/(xmax-xmin||1)*(W-2*p), Y=y=>H-p-(y-ymin)/(ymax-ymin||1)*(H-2*p);
-  const path=samples.map((s,i)=>`${i?'L':'M'} ${X(s.x).toFixed(2)} ${Y(s[key]).toFixed(2)}`).join(' ');
-  const zero=Y(0);
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="chart"><line x1="${p}" y1="${zero}" x2="${W-p}" y2="${zero}" class="axis"/><path d="${path}" class="diagram-line"/><text x="${p}" y="20" class="chart-label">${label} (${unit})</text><text x="${W-p}" y="${H-8}" text-anchor="end" class="chart-label">x (m)</text></svg>`;
-}
-
-function showResults(result) {
-  const d=result.diagrams?.samples||[];
-  const maxV=Math.max(...d.map(x=>Math.abs(x.shear_kN)),0), maxM=Math.max(...d.map(x=>Math.abs(x.moment_kNm)),0);
-  const maxD=Math.max(...result.nodes.map(x=>Math.abs(x.deflection_mm)),0);
-  $('#maxV').textContent=`${maxV.toFixed(3)} kN`; $('#maxM').textContent=`${maxM.toFixed(3)} kN·m`; $('#maxD').textContent=`${maxD.toFixed(3)} mm`;
-  const hm=result.hinge_checks||[]; $('#hingeM').textContent=hm.length?hm.map(h=>Math.max(Math.abs(h.left_moment_kNm),Math.abs(h.right_moment_kNm)).toExponential(2)).join(' / ')+' kN·m':'—';
-  $('#reactions').innerHTML=`<table><thead><tr><th>#</th><th>Type</th><th>Position</th><th>V (kN)</th><th>M (kN·m)</th></tr></thead><tbody>${result.reactions.map(r=>`<tr><td>${r.index}</td><td>${r.type}</td><td>${r.position}</td><td>${Number(r.vertical_kN).toFixed(3)}</td><td>${Number(r.moment_kNm).toFixed(3)}</td></tr>`).join('')}</tbody></table>`;
-  chart($('#sfd'),d,'shear_kN','Shear force','kN'); chart($('#bmd'),d,'moment_kNm','Bending moment','kN·m');
-}
-
-async function initPython() {
-  try {
-    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/' });
-    await pyodide.loadPackage('numpy');
-    const solverText = await fetch('../backend/solver.py').then(r=>r.text());
-    const diagramText = await fetch('../backend/diagrams.py').then(r=>r.text());
-    pyodide.FS.writeFile('/home/solver.py', solverText);
-    pyodide.FS.writeFile('/home/diagrams.py', diagramText);
-    pyodide.runPython("import sys; sys.path.insert(0, '/home')");
-    pyodide.runPython('import solver, diagrams');
-    solverReady=true; $('#engineStatus').textContent='Python engine ready'; $('#status').textContent='Ready';
-  } catch (e) { $('#engineStatus').textContent='Python engine failed'; $('#error').textContent=e.message||String(e); $('#error').classList.remove('hidden'); }
-}
-
-async function evaluate() {
-  if (!solverReady) return;
-  $('#status').textContent='Solving…'; $('#error').classList.add('hidden');
-  try {
-    pyodide.globals.set('model_json', JSON.stringify(state));
-    const raw=await pyodide.runPythonAsync(`import json\nmodel=json.loads(model_json)\nr=solver.solve_beam(model)\nr["diagrams"]=diagrams.build_diagrams(model,r)\njson.dumps(r)`);
-    const result=JSON.parse(raw); showResults(result); $('#status').textContent='Solved';
-  } catch(e) { $('#status').textContent='Error'; $('#error').textContent=e.message||String(e); $('#error').classList.remove('hidden'); }
-}
-
-document.addEventListener('input', e => {
-  if (e.target.dataset.span !== undefined) state.spans[Number(e.target.dataset.span)][e.target.dataset.field]=Number(e.target.value); renderBeam();
-  if (e.target.dataset.support !== undefined) { state.supports[Number(e.target.dataset.support)][e.target.dataset.field]=e.target.dataset.field==='type'?e.target.value:Number(e.target.value); renderBeam(); }
-  if (e.target.dataset.load !== undefined) { state.loads[Number(e.target.dataset.load)][e.target.dataset.field]=Number(e.target.value); renderBeam(); }
-});
-document.addEventListener('click', e => {
-  if(e.target.id==='solve') evaluate();
-  if(e.target.id==='addSpan'){state.spans.push({length:4,E:200,I:100000000});render();}
-  if(e.target.id==='addSupport'){state.supports.push({id:Date.now(),type:'internal_hinge',position:totalLength()/2,settlement:0});render();}
-  const t=e.target.closest('[data-add-load]'); if(t){const type=t.dataset.addLoad;state.loads.push({id:Date.now(),type,value:type==='moment'?10:10,position:totalLength()/2,to:totalLength()});render();}
-  const rs=e.target.dataset.removeSpan; if(rs!==undefined&&state.spans.length>1){state.spans.splice(Number(rs),1);render();}
-  const rso=e.target.dataset.removeSupport; if(rso!==undefined){state.supports.splice(Number(rso),1);render();}
-  const rl=e.target.dataset.removeLoad; if(rl!==undefined){state.loads.splice(Number(rl),1);render();}
-});
-
-render(); initPython();
+function render(){renderInputs();renderBeam()}
+function chart(el,samples,key,label,unit){if(!samples.length){el.innerHTML='';return}const W=760,H=280,p=45,xs=samples.map(s=>s.x),ys=samples.map(s=>s[key]),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(0,...ys),ymax=Math.max(0,...ys),X=x=>p+(x-xmin)/(xmax-xmin||1)*(W-2*p),Y=y=>H-p-(y-ymin)/(ymax-ymin||1)*(H-2*p),path=samples.map((s,i)=>`${i?'L':'M'} ${X(s.x).toFixed(2)} ${Y(s[key]).toFixed(2)}`).join(' '),zero=Y(0);el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="chart"><line x1="${p}" y1="${zero}" x2="${W-p}" y2="${zero}" class="axis"/><path d="${path}" class="diagram-line"/><text x="${p}" y="20" class="chart-label">${label} (${unit})</text><text x="${W-p}" y="${H-8}" text-anchor="end" class="chart-label">x (m)</text></svg>`}
+function showResults(r){const d=r.diagrams?.samples||[],maxV=Math.max(...d.map(x=>Math.abs(x.shear_kN)),0),maxM=Math.max(...d.map(x=>Math.abs(x.moment_kNm)),0),maxD=Math.max(...r.nodes.map(x=>Math.abs(x.deflection_mm)),0);$('#maxV').textContent=`${maxV.toFixed(3)} kN`,$('#maxM').textContent=`${maxM.toFixed(3)} kN·m`,$('#maxD').textContent=`${maxD.toFixed(3)} mm`;const hm=r.hinge_checks||[];$('#hingeM').textContent=hm.length?hm.map(h=>Math.max(Math.abs(h.left_moment_kNm),Math.abs(h.right_moment_kNm)).toExponential(2)).join(' / ')+' kN·m':'—';$('#reactions').innerHTML=`<table><thead><tr><th>#</th><th>Type</th><th>Position</th><th>V (kN)</th><th>M (kN·m)</th></tr></thead><tbody>${r.reactions.map(x=>`<tr><td>${x.index}</td><td>${x.type}</td><td>${x.position}</td><td>${Number(x.vertical_kN).toFixed(3)}</td><td>${Number(x.moment_kNm).toFixed(3)}</td></tr>`).join('')}</tbody></table>`;chart($('#sfd'),d,'shear_kN','Shear force','kN');chart($('#bmd'),d,'moment_kNm','Bending moment','kN·m')}
+async function initPython(){try{pyodide=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'});await pyodide.loadPackage('numpy');const solverText=await fetch('backend/solver.py').then(r=>r.text()),diagramText=await fetch('backend/diagrams.py').then(r=>r.text());pyodide.FS.writeFile('/home/solver.py',solverText);pyodide.FS.writeFile('/home/diagrams.py',diagramText);pyodide.runPython("import sys; sys.path.insert(0, '/home')");pyodide.runPython('import solver, diagrams');solverReady=true;$('#engineStatus').textContent='Python engine ready';$('#status').textContent='Ready'}catch(e){$('#engineStatus').textContent='Python engine failed';$('#error').textContent=e.message||String(e);$('#error').classList.remove('hidden')}}
+async function evaluate(){if(!solverReady)return;$('#status').textContent='Solving…';$('#error').classList.add('hidden');try{pyodide.globals.set('model_json',JSON.stringify(state));const raw=await pyodide.runPythonAsync(`import json\nmodel=json.loads(model_json)\nr=solver.solve_beam(model)\nr["diagrams"]=diagrams.build_diagrams(model,r)\njson.dumps(r)`);showResults(JSON.parse(raw));$('#status').textContent='Solved'}catch(e){$('#status').textContent='Error';$('#error').textContent=e.message||String(e);$('#error').classList.remove('hidden')}}
+document.addEventListener('input',e=>{if(e.target.dataset.span!==undefined){state.spans[Number(e.target.dataset.span)][e.target.dataset.field]=Number(e.target.value);renderBeam()}if(e.target.dataset.support!==undefined){state.supports[Number(e.target.dataset.support)][e.target.dataset.field]=e.target.dataset.field==='type'?e.target.value:Number(e.target.value);renderBeam()}if(e.target.dataset.load!==undefined){state.loads[Number(e.target.dataset.load)][e.target.dataset.field]=Number(e.target.value);renderBeam()}});
+document.addEventListener('click',e=>{if(e.target.id==='solve')evaluate();if(e.target.id==='addSpan'){state.spans.push({length:4,E:200,I:100000000});render()}if(e.target.id==='addSupport'){state.supports.push({id:Date.now(),type:'internal_hinge',position:totalLength()/2,settlement:0});render()}const t=e.target.closest('[data-add-load]');if(t){const type=t.dataset.addLoad;state.loads.push({id:Date.now(),type,value:10,position:totalLength()/2,to:totalLength()});render()}const rs=e.target.dataset.removeSpan;if(rs!==undefined&&state.spans.length>1){state.spans.splice(Number(rs),1);render()}const rso=e.target.dataset.removeSupport;if(rso!==undefined){state.supports.splice(Number(rso),1);render()}const rl=e.target.dataset.removeLoad;if(rl!==undefined){state.loads.splice(Number(rl),1);render()}});
+render();initPython();
