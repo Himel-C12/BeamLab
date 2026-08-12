@@ -23,9 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Assemble static site
+        run: |
+          mkdir -p site/backend
+          cp -r frontend/. site/
+          cp backend/solver.py backend/diagrams.py site/backend/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend
+          path: site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
