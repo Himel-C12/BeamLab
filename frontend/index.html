@@ -3,62 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BeamLab</title>
+  <title>BeamLab · Beam Analyzer</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>BeamLab</h1>
-      <p>SFD · BMD · AFD · Deflection</p>
+<header class="topbar">
+  <div class="brand"><div class="mark">BL</div><div><strong>BeamLab</strong><small>SFD · BMD · AFD · Deflection</small></div></div>
+  <div id="engineStatus" class="engine">Loading Python engine…</div>
+</header>
+<main class="layout">
+  <section class="card beam-card">
+    <div class="card-head"><div><h1>Beam model</h1><p>Direct-stiffness analysis with true internal-hinge releases.</p></div><button id="solve" class="primary">Evaluate</button></div>
+    <div id="beamCanvas" class="beam-canvas"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-head"><h2>Beam properties</h2><button id="addSpan">+ Span</button></div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Length (m)</th><th>E (GPa)</th><th>I (mm⁴)</th><th></th></tr></thead><tbody id="spanRows"></tbody></table></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Supports</h2><button id="addSupport">+ Support</button></div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Type</th><th>Position (m)</th><th>Settlement (mm)</th><th></th></tr></thead><tbody id="supportRows"></tbody></table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Loads</h2><div class="button-row"><button data-add-load="point">+ Point</button><button data-add-load="udl">+ UDL</button><button data-add-load="moment">+ Moment</button></div></div>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>Type</th><th>Value</th><th>Position</th><th>To</th><th></th></tr></thead><tbody id="loadRows"></tbody></table></div>
+  </section>
+
+  <section class="card results-card">
+    <div class="card-head"><h2>Results</h2><span id="status" class="badge">Waiting</span></div>
+    <div id="error" class="error hidden"></div>
+    <div class="metrics">
+      <div><span>Max |V|</span><strong id="maxV">—</strong></div>
+      <div><span>Max |M|</span><strong id="maxM">—</strong></div>
+      <div><span>Max |δ|</span><strong id="maxD">—</strong></div>
+      <div><span>Hinge M</span><strong id="hingeM">—</strong></div>
     </div>
-  </header>
+    <h3>Support reactions</h3><div id="reactions" class="table-wrap empty">Evaluate the beam to see reactions.</div>
+  </section>
 
-  <main>
-    <section class="card">
-      <div class="card-head">
-        <h2>Beam model</h2>
-        <span id="status">Ready</span>
-      </div>
-      <div id="beamCanvas" aria-label="Beam model"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Supports</h2>
-        <button id="addSupport">+ Support</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>#</th><th>Type</th><th>Position</th></tr>
-          </thead>
-          <tbody id="supportRows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Loads</h2>
-        <button id="addPoint">+ Point load</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>#</th><th>Type</th><th>Value</th><th>Position</th></tr>
-          </thead>
-          <tbody id="loadRows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="card">
-      <button id="solve">Solve</button>
-      <pre id="result">No analysis yet.</pre>
-    </section>
-  </main>
-
-  <script type="module" src="app.js"></script>
+  <section class="grid2">
+    <section class="card diagram-card"><h2>Shear Force Diagram</h2><div id="sfd"></div></section>
+    <section class="card diagram-card"><h2>Bending Moment Diagram</h2><div id="bmd"></div></section>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
