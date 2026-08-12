@@ -64,7 +64,6 @@
     originalRenderBeam();
     const svg=document.querySelector('#beamCanvas svg');
     if(!svg) return;
-    // Fixed supports are walls, not circular nodes.
     const groups=[...svg.querySelectorAll('g')].filter(g=>g.querySelector(':scope > text.support-label'));
     groups.forEach((g,i)=>{if(state?.supports?.[i]?.type==='fixed')g.querySelector(':scope > circle.node')?.remove();});
     rebuildLoads(svg);
@@ -72,7 +71,8 @@
 
   window.renderInputs=function(){
     originalRenderInputs();
-    // Moment values use moment units, not force units.
+    const currentLabels=labels[typeof unit !== 'undefined' ? unit : 'SI'];
+    document.querySelectorAll('[data-unit-label]').forEach(el=>{const type=el.dataset.unitLabel;if(currentLabels[type])el.textContent=currentLabels[type]});
     (state?.loads||[]).forEach((l,i)=>{
       if(kind(l.type)!=='moment') return;
       const input=document.querySelector(`input[data-load="${i}"][data-field="value"]`);
