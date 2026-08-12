@@ -1,19 +1,11 @@
-"""BeamLab structural analysis engine.
-
-Euler-Bernoulli direct-stiffness solver for prismatic/multi-span beams.
-Internal hinges are modeled as true rotational releases: the vertical DOF is
-shared across the hinge while the rotations on its two sides are independent.
-The module is deliberately independent of FastAPI and the browser UI.
-"""
+"""BeamLab's tested Euler-Bernoulli direct-stiffness beam solver."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import isclose
 from typing import Any
 
 import numpy as np
-
 
 TOL = 1e-9
 
@@ -23,11 +15,11 @@ class InternalHinge:
     position: float
 
 
-def _norm_type(value: str) -> str:
-    return value.strip().lower().replace(" ", "_").replace("-", "_")
+def _kind(value: Any) -> str:
+    return str(value).strip().lower().replace("-", "_").replace(" ", "_")
 
 
-def _number(value: Any, name: str) -> float:
+def _num(value: Any, name: str) -> float:
     try:
         x = float(value)
     except (TypeError, ValueError) as exc:
@@ -37,324 +29,246 @@ def _number(value: Any, name: str) -> float:
     return x
 
 
-def _unique_positions(values: list[float], tol: float = TOL) -> list[float]:
+def _nodes(values: list[float]) -> list[float]:
     out: list[float] = []
     for x in sorted(values):
-        if not out or abs(x - out[-1]) > tol:
+        if not out or abs(x - out[-1]) > TOL:
             out.append(x)
     return out
 
 
-def _beam_stiffness(EI: float, length: float) -> np.ndarray:
-    l2 = length * length
-    l3 = l2 * length
-    return (EI / l3) * np.array(
-        [
-            [12.0, 6.0 * length, -12.0, 6.0 * length],
-            [6.0 * length, 4.0 * l2, -6.0 * length, 2.0 * l2],
-            [-12.0, -6.0 * length, 12.0, -6.0 * length],
-            [6.0 * length, 2.0 * l2, -6.0 * length, 4.0 * l2],
-        ],
-        dtype=float,
-    )
-
-
-def _udl_vector(q_down: float, length: float) -> np.ndarray:
-    """Consistent nodal load vector; positive vertical load is upward."""
-    return np.array(
-        [-q_down * length / 2.0, -q_down * length**2 / 12.0,
-         -q_down * length / 2.0, q_down * length**2 / 12.0],
-        dtype=float,
-    )
-
-
-def _find_node(nodes: list[float], x: float) -> int:
+def _node_index(nodes: list[float], x: float) -> int:
     for i, p in enumerate(nodes):
         if abs(p - x) <= TOL:
             return i
-    raise ValueError(f"Position {x:g} does not coincide with an analysis node")
+    raise ValueError(f"Position {x:g} is not an analysis node")
+
+
+def _k(EI: float, L: float) -> np.ndarray:
+    L2, L3 = L * L, L * L * L
+    return EI / L3 * np.array([
+        [12, 6 * L, -12, 6 * L],
+        [6 * L, 4 * L2, -6 * L, 2 * L2],
+        [-12, -6 * L, 12, -6 * L],
+        [6 * L, 2 * L2, -6 * L, 4 * L2],
+    ], dtype=float)
+
+
+def _udl(q: float, L: float) -> np.ndarray:
+    # q is positive downward; vertical DOFs are positive upward.
+    return np.array([-q * L / 2, -q * L * L / 12,
+                     -q * L / 2, q * L * L / 12], dtype=float)
 
 
 def solve_beam(model: dict) -> dict:
-    """Solve a beam model using the Euler-Bernoulli direct-stiffness method.
+    """Solve a beam in SI-consistent stiffness units.
 
-    Expected model shape::
+    Input: length in m, E in GPa, I in mm^4, force in kN, moment in kN-m.
+    Output: force in kN, moment in kN-m, deflection in mm, rotation in rad.
 
-        {"spans": [{"length": 8, "E": 200, "I": 1e8}, ...],
-         "supports": [{"type": "pin|roller|fixed|internal_hinge",
-                       "position": 0, "settlement": 0}],
-         "loads": [{"type": "point", "value": 10, "position": 4},
-                   {"type": "udl", "value": 4, "position": 4, "to": 8},
-                   {"type": "moment", "value": 5, "position": 8}]}
-
-    E is in GPa and I in mm^4, lengths in metres, forces in kN and moments
-    in kN-m. The solver converts E/I internally to consistent SI stiffness
-    and returns engineering results in kN, kN-m, mm and radians.
+    An internal hinge shares vertical displacement with the beam but has two
+    independent rotational DOFs. Therefore it transfers shear but no bending
+    moment, which is the defining structural behavior of an internal hinge.
     """
     spans = model.get("spans") or []
     supports = model.get("supports") or []
     loads = model.get("loads") or []
     if not spans:
-        raise ValueError("At least one beam span is required")
+        raise ValueError("At least one span is required")
 
-    # Span boundaries carry the section properties used by each element.
-    span_data: list[tuple[float, float, float]] = []
-    x0 = 0.0
-    for i, span in enumerate(spans, 1):
-        length = _number(span.get("length"), f"span {i} length")
-        E_gpa = _number(span.get("E", 200.0), f"span {i} E")
-        I_mm4 = _number(span.get("I", 1e8), f"span {i} I")
-        if length <= 0 or E_gpa <= 0 or I_mm4 <= 0:
-            raise ValueError(f"span {i} length, E and I must be positive")
-        span_data.append((x0, x0 + length, E_gpa * 1e9, I_mm4 * 1e-12))
-        x0 += length
-    total_length = x0
+    sections = []
+    total = 0.0
+    for i, s in enumerate(spans, 1):
+        L = _num(s.get("length"), f"span {i} length")
+        E = _num(s.get("E", 200), f"span {i} E")
+        I = _num(s.get("I", 1e8), f"span {i} I")
+        if L <= 0 or E <= 0 or I <= 0:
+            raise ValueError(f"span {i}: length, E and I must be positive")
+        sections.append((total, total + L, E * 1e9, I * 1e-12))
+        total += L
 
-    def check_x(x: float, label: str) -> float:
-        x = _number(x, label)
-        if x < -TOL or x > total_length + TOL:
-            raise ValueError(f"{label}={x:g} lies outside the beam")
-        return min(total_length, max(0.0, x))
+    def xpos(value: Any, name: str) -> float:
+        x = _num(value, name)
+        if x < -TOL or x > total + TOL:
+            raise ValueError(f"{name}={x:g} is outside the beam")
+        return min(total, max(0.0, x))
 
-    # Every discontinuity becomes a node. This makes point loads and UDL ends
-    # exact rather than approximated by the plotting mesh.
-    positions = [0.0, total_length]
-    hinge_positions: list[float] = []
+    positions = [0.0, total]
+    hinge_positions = []
     for i, s in enumerate(supports, 1):
-        x = check_x(s.get("position"), f"support {i} position")
+        x = xpos(s.get("position"), f"support {i} position")
         positions.append(x)
-        if _norm_type(str(s.get("type", ""))) in {"internal_hinge", "internalhinge", "hinge"}:
+        if _kind(s.get("type")) in {"internal_hinge", "internalhinge", "hinge"}:
             hinge_positions.append(x)
+
     for i, load in enumerate(loads, 1):
-        kind = _norm_type(str(load.get("type", "")))
-        if kind in {"point", "point_load", "moment"}:
-            positions.append(check_x(load.get("position"), f"load {i} position"))
-        elif kind in {"udl", "distributed", "uniform"}:
-            a = check_x(load.get("position"), f"load {i} start")
-            b = check_x(load.get("to"), f"load {i} end")
+        t = _kind(load.get("type"))
+        if t in {"point", "point_load", "moment"}:
+            positions.append(xpos(load.get("position"), f"load {i} position"))
+        elif t in {"udl", "distributed", "uniform"}:
+            a = xpos(load.get("position"), f"load {i} start")
+            b = xpos(load.get("to"), f"load {i} end")
             if b <= a + TOL:
-                raise ValueError(f"UDL {i} must have end > start")
-            positions.extend([a, b])
+                raise ValueError(f"UDL {i}: end must be greater than start")
+            positions += [a, b]
         else:
             raise ValueError(f"Unsupported load type: {load.get('type')}")
 
-    nodes = _unique_positions(positions)
-    hinges = {min(nodes, key=lambda p: abs(p - x)) for x in hinge_positions}
+    nodes = _nodes(positions)
+    hinges = {_node_index(nodes, x) for x in hinge_positions}
+    if any(n in {0, len(nodes) - 1} for n in hinges):
+        raise ValueError("An internal hinge must lie inside the beam, not at an end")
 
-    # Vertical displacement is always shared. Rotation is shared at ordinary
-    # nodes but deliberately split into two DOFs at an internal hinge.
-    dof = 0
-    v_dof: list[int] = []
-    for _ in nodes:
-        v_dof.append(dof)
-        dof += 1
-
+    # One vertical DOF per physical node. Ordinary nodes share one rotation;
+    # hinge nodes get one independent rotation for each adjacent member.
+    v_dof = list(range(len(nodes)))
+    next_dof = len(nodes)
+    shared_rot: dict[int, int] = {}
     elements: list[dict[str, Any]] = []
+
+    def rotation(node: int) -> int:
+        nonlocal next_dof
+        if node not in hinges:
+            if node not in shared_rot:
+                shared_rot[node] = next_dof
+                next_dof += 1
+            return shared_rot[node]
+        r = next_dof
+        next_dof += 1
+        return r
+
     for e in range(len(nodes) - 1):
         a, b = nodes[e], nodes[e + 1]
-        mid = (a + b) / 2.0
-        section = next((s for s in span_data if s[0] - TOL <= mid <= s[1] + TOL), None)
+        mid = (a + b) / 2
+        section = next((s for s in sections if s[0] - TOL <= mid <= s[1] + TOL), None)
         if section is None:
-            raise ValueError("Unable to assign section properties to an element")
+            raise ValueError("Could not assign section properties to an element")
         _, _, E, I = section
-        r1 = dof
-        dof += 1
-        r2 = dof
-        dof += 1
-        # Merge rotations at non-hinge nodes by assigning canonical IDs later.
-        elements.append({"i": e, "j": e + 1, "E": E, "I": I, "r1": r1, "r2": r2})
+        elements.append({
+            "i": e, "j": e + 1, "E": E, "I": I,
+            "dofs": [v_dof[e], rotation(e), v_dof[e + 1], rotation(e + 1)],
+            "length": b - a,
+        })
 
-    # Replace element-end rotations with shared node rotation DOFs where
-    # appropriate. At a hinge each side retains its unique rotational DOF.
-    shared_rot: dict[int, int] = {}
-    for n, x in enumerate(nodes):
-        if x not in hinges:
-            incident = []
-            if n > 0:
-                incident.append(elements[n - 1]["r2"])
-            if n < len(elements):
-                incident.append(elements[n]["r1"])
-            if incident:
-                shared_rot[n] = incident[0]
-                for el in elements:
-                    if el["r1"] == incident[-1] and el["i"] == n:
-                        el["r1"] = incident[0]
-                    if el["r2"] == incident[-1] and el["j"] == n:
-                        el["r2"] = incident[0]
-
-    # Compact DOF numbering after rotation merging.
-    used = list(v_dof)
-    for el in elements:
-        used.extend([el["r1"], el["r2"]])
-    remap = {old: new for new, old in enumerate(sorted(set(used)))}
-    v_dof = [remap[x] for x in v_dof]
-    for el in elements:
-        el["dofs"] = [remap[el["i"] and elements[el["i"]]["r1"] if False else el["r1"]],
-                      remap[el["r1"]], remap[el["j"] and elements[el["j"]]["r2"] if False else el["r2"]]]
-    # Rebuild the four DOFs cleanly; the expression above intentionally avoids
-    # any hidden global indexing and is overwritten immediately below.
-    for el in elements:
-        el["dofs"] = [v_dof[el["i"]], remap[el["r1"]], v_dof[el["j"]], remap[el["r2"]]]
-    ndof = len(remap)
-
+    ndof = next_dof
     K = np.zeros((ndof, ndof), dtype=float)
     F = np.zeros(ndof, dtype=float)
 
-    # Add member stiffness and exact UDL equivalent nodal loads.
     for el in elements:
-        L = nodes[el["j"]] - nodes[el["i"]]
-        el["length"] = L
-        el["k"] = _beam_stiffness(el["E"] * el["I"], L)
+        el["k"] = _k(el["E"] * el["I"], el["length"])
+        el["f_load"] = np.zeros(4, dtype=float)
         idx = el["dofs"]
         K[np.ix_(idx, idx)] += el["k"]
-        el["f_load"] = np.zeros(4, dtype=float)
 
-    # Applied loads in kN/kN-m are converted to N/N-m for the linear system.
     for load in loads:
-        kind = _norm_type(str(load.get("type")))
-        value = _number(load.get("value"), "load value")
-        if kind in {"point", "point_load"}:
-            n = _find_node(nodes, check_x(load.get("position"), "point load position"))
-            F[v_dof[n]] += -value * 1000.0
-        elif kind == "moment":
-            x = check_x(load.get("position"), "moment position")
-            n = _find_node(nodes, x)
-            # Positive moment is counter-clockwise.
-            rot = next((el["dofs"][1] for el in elements if el["i"] == n), None)
+        t = _kind(load.get("type"))
+        value = _num(load.get("value"), "load value")
+        if t in {"point", "point_load"}:
+            n = _node_index(nodes, xpos(load.get("position"), "point load position"))
+            F[v_dof[n]] -= value * 1000
+        elif t == "moment":
+            n = _node_index(nodes, xpos(load.get("position"), "moment position"))
+            rot = shared_rot.get(n)
             if rot is None:
-                rot = next((el["dofs"][3] for el in elements if el["j"] == n), None)
-            F[rot] += value * 1000.0
+                # A moment applied exactly at a hinge is ambiguous unless the
+                # user specifies its side; reject it instead of guessing.
+                raise ValueError("A concentrated moment cannot be applied directly at an internal hinge")
+            F[rot] += value * 1000
         else:
-            a = check_x(load.get("position"), "UDL start")
-            b = check_x(load.get("to"), "UDL end")
+            a = xpos(load.get("position"), "UDL start")
+            b = xpos(load.get("to"), "UDL end")
             q = value
             for el in elements:
                 ea, eb = nodes[el["i"]], nodes[el["j"]]
                 if ea >= a - TOL and eb <= b + TOL:
-                    fe = _udl_vector(q, eb - ea) * 1000.0
+                    fe = _udl(q, eb - ea) * 1000
                     el["f_load"] += fe
                     F[np.array(el["dofs"])] += fe
 
     prescribed: dict[int, float] = {}
-    support_records: list[dict[str, Any]] = []
+    support_meta = []
     for i, s in enumerate(supports, 1):
-        kind = _norm_type(str(s.get("type", "pin")))
-        x = check_x(s.get("position"), f"support {i} position")
-        n = _find_node(nodes, x)
-        settlement = _number(s.get("settlement", 0.0), f"support {i} settlement") * 1e-3
-        if kind in {"internal_hinge", "internalhinge", "hinge"}:
-            support_records.append({"index": i, "type": "internal_hinge", "position": x, "vertical": 0.0, "moment": 0.0})
+        t = _kind(s.get("type", "pin"))
+        x = xpos(s.get("position"), f"support {i} position")
+        n = _node_index(nodes, x)
+        settlement = _num(s.get("settlement", 0), f"support {i} settlement") * 1e-3
+        if t in {"internal_hinge", "internalhinge", "hinge"}:
+            support_meta.append({"index": i, "type": "internal_hinge", "position": x})
             continue
-        if kind not in {"pin", "roller", "fixed"}:
+        if t not in {"pin", "roller", "fixed"}:
             raise ValueError(f"Unsupported support type: {s.get('type')}")
+        if n in hinges:
+            raise ValueError("A conventional support cannot occupy the same node as an internal hinge")
         prescribed[v_dof[n]] = settlement
-        if kind == "fixed":
-            # Ordinary fixed support has a shared rotation DOF.
-            rot = None
-            if n in shared_rot:
-                rot = remap[shared_rot[n]]
-            else:
-                for el in elements:
-                    if el["i"] == n:
-                        rot = el["dofs"][1]
-                        break
-                    if el["j"] == n:
-                        rot = el["dofs"][3]
-                        break
-            if rot is None:
-                raise ValueError("Fixed support has no rotational DOF")
-            prescribed[rot] = 0.0
-        support_records.append({"index": i, "type": kind, "position": x, "settlement": settlement})
+        if t == "fixed":
+            prescribed[shared_rot[n]] = 0.0
+        support_meta.append({"index": i, "type": t, "position": x, "settlement": settlement})
 
     if not prescribed:
         raise ValueError("The beam has no displacement restraints")
 
     fixed = np.array(sorted(prescribed), dtype=int)
-    free = np.array([i for i in range(ndof) if i not in set(fixed)], dtype=int)
+    fixed_set = set(fixed.tolist())
+    free = np.array([i for i in range(ndof) if i not in fixed_set], dtype=int)
     d = np.zeros(ndof, dtype=float)
     for i, value in prescribed.items():
         d[i] = value
+
     if free.size:
-        Kff = K[np.ix_(free, free)]
-        rhs = F[free] - K[np.ix_(free, fixed)] @ d[fixed]
         try:
+            Kff = K[np.ix_(free, free)]
+            rhs = F[free] - K[np.ix_(free, fixed)] @ d[fixed]
             d[free] = np.linalg.solve(Kff, rhs)
         except np.linalg.LinAlgError as exc:
             raise ValueError("Beam model is unstable or insufficiently restrained") from exc
 
     residual = K @ d - F
 
-    # Return node displacement/rotation data. At an internal hinge, expose both
-    # side rotations so a rotation discontinuity is explicit rather than hidden.
-    node_results = []
+    nodes_out = []
     for n, x in enumerate(nodes):
-        left_rot = None
-        right_rot = None
-        if n > 0:
-            left_rot = d[elements[n - 1]["dofs"][3]]
-        if n < len(elements):
-            right_rot = d[elements[n]["dofs"][1]]
-        node_results.append({
+        left = d[elements[n - 1]["dofs"][3]] if n else None
+        right = d[elements[n]["dofs"][1]] if n < len(elements) else None
+        nodes_out.append({
             "x": x,
-            "deflection_mm": d[v_dof[n]] * 1000.0,
-            "rotation_rad_left": left_rot,
-            "rotation_rad_right": right_rot,
-            "is_internal_hinge": x in hinges,
+            "deflection_mm": d[v_dof[n]] * 1000,
+            "rotation_rad_left": left,
+            "rotation_rad_right": right,
+            "is_internal_hinge": n in hinges,
         })
 
-    # Reactions are recovered from Kd-F. At an internal hinge they are exactly
-    # zero by construction and are never reported as a support reaction.
     reactions = []
-    for rec in support_records:
-        if rec["type"] == "internal_hinge":
-            reactions.append({**rec, "vertical_kN": 0.0, "moment_kNm": 0.0})
+    for meta in support_meta:
+        if meta["type"] == "internal_hinge":
+            reactions.append({**meta, "vertical_kN": 0.0, "moment_kNm": 0.0})
             continue
-        n = _find_node(nodes, rec["position"])
-        v_reaction = residual[v_dof[n]] / 1000.0
-        m_reaction = 0.0
-        if rec["type"] == "fixed":
-            rot_dof = None
-            for el in elements:
-                if el["i"] == n:
-                    rot_dof = el["dofs"][1]
-                    break
-                if el["j"] == n:
-                    rot_dof = el["dofs"][3]
-                    break
-            m_reaction = residual[rot_dof] / 1000.0 if rot_dof is not None else 0.0
-        reactions.append({**rec, "vertical_kN": v_reaction, "moment_kNm": m_reaction})
+        n = _node_index(nodes, meta["position"])
+        moment = residual[shared_rot[n]] / 1000 if meta["type"] == "fixed" else 0.0
+        reactions.append({**meta, "vertical_kN": residual[v_dof[n]] / 1000, "moment_kNm": moment})
 
-    # Exact internal-hinge moment check from member end forces.
     hinge_checks = []
-    for x in sorted(hinges):
-        n = _find_node(nodes, x)
-        left_m = right_m = 0.0
-        if n > 0:
-            el = elements[n - 1]
-            left_m = (el["k"] @ d[np.array(el["dofs"])] - el["f_load"])[3] / 1000.0
-        if n < len(elements):
-            el = elements[n]
-            right_m = (el["k"] @ d[np.array(el["dofs"])] - el["f_load"])[1] / 1000.0
-        hinge_checks.append({"position": x, "left_moment_kNm": left_m, "right_moment_kNm": right_m})
+    for n in sorted(hinges):
+        left_force = elements[n - 1]["k"] @ d[elements[n - 1]["dofs"]] - elements[n - 1]["f_load"]
+        right_force = elements[n]["k"] @ d[elements[n]["dofs"]] - elements[n]["f_load"]
+        hinge_checks.append({
+            "position": nodes[n],
+            "left_moment_kNm": left_force[3] / 1000,
+            "right_moment_kNm": right_force[1] / 1000,
+        })
 
-    # Global equilibrium check in engineering units.
-    total_vertical = sum(r["vertical_kN"] for r in reactions)
     applied_vertical = 0.0
     for load in loads:
-        kind = _norm_type(str(load.get("type")))
-        value = _number(load.get("value"), "load value")
-        if kind in {"point", "point_load"}:
+        t = _kind(load.get("type"))
+        value = _num(load.get("value"), "load value")
+        if t in {"point", "point_load"}:
             applied_vertical -= value
-        elif kind in {"udl", "distributed", "uniform"}:
-            a = _number(load.get("position"), "UDL start")
-            b = _number(load.get("to"), "UDL end")
-            applied_vertical -= value * (b - a)
-    equilibrium_error = total_vertical + applied_vertical
+        elif t in {"udl", "distributed", "uniform"}:
+            applied_vertical -= value * (float(load["to"]) - float(load["position"]))
+    reaction_sum = sum(r["vertical_kN"] for r in reactions)
 
     return {
-        "nodes": node_results,
+        "nodes": nodes_out,
         "reactions": reactions,
         "hinge_checks": hinge_checks,
-        "equilibrium": {"vertical_error_kN": equilibrium_error},
+        "equilibrium": {"vertical_error_kN": reaction_sum + applied_vertical},
         "dof_count": ndof,
     }
