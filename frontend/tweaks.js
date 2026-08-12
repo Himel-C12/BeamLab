@@ -1,9 +1,11 @@
 /* BeamLab visual/units refinements */
 (()=>{
+ // Unit toggle is label-only: numerical values stay exactly as entered.
+ factor=()=>1; displayValue=v=>Number(v); siValue=v=>Number(v);
+ const baseUnitLabel=unitLabel;
+ unitLabel=function(type){return ({SI:{length:'m',force:'kN',moment:'kN·m',deflection:'mm',E:'GPa',I:'mm⁴',pos:'m'},imperial:{length:'ft',force:'kip',moment:'kip·ft',deflection:'in',E:'ksi',I:'in⁴',pos:'ft'}}[unit]||{})[type]||baseUnitLabel(type)};
  const origRenderBeam=window.renderBeam;
- window.renderBeam=function(){ origRenderBeam(); document.querySelectorAll('#beamCanvas .fixed-symbol').forEach(g=>{const n=g.parentElement?.querySelector('.node');if(n)n.remove()}) };
- const origRenderInputs=window.renderInputs;
- window.renderInputs=function(){origRenderInputs();document.querySelectorAll('[data-unit-label]').forEach(e=>{const m={SI:{length:'m',force:'kN',moment:'kN·m',deflection:'mm',E:'GPa',I:'mm⁴',pos:'m'},imperial:{length:'ft',force:'kip',moment:'kip·ft',deflection:'in',E:'ksi',I:'in⁴',pos:'ft'}};e.textContent=m[unit]?.[e.dataset.unitLabel]||e.textContent})};
+ window.renderBeam=function(){origRenderBeam();document.querySelectorAll('#beamCanvas .fixed-symbol').forEach(g=>{const n=g.parentElement?.querySelector('.node');if(n)n.remove()})};
  window.chart=function(el,samples,key,type,label,features=[],jumps=[]){
   if(!samples?.length){el.innerHTML='<div class="empty">No data.</div>';return}
   let data=samples.map(s=>({x:+s.x,y:+s[key]})).filter(p=>isFinite(p.x)&&isFinite(p.y));
@@ -15,8 +17,7 @@
   const fxs=[...new Set(features.map(f=>+f.x).filter(isFinite))],fl=showFeatures?fxs.map(x=>`<line x1="${X(x)}" y1="${p.t}" x2="${X(x)}" y2="${H-p.b}" class="chart-feature"/>`).join(''):'',marks=showFeatures?features.filter(f=>f.support).map(f=>`<path d="M ${X(f.x)-7} ${zero+5} L ${X(f.x)} ${zero-7} L ${X(f.x)+7} ${zero+5} Z" class="chart-support"/>`).join(''):'';
   const max=data.reduce((a,b)=>Math.abs(b.y)>Math.abs(a.y)?b:a,data[0]),values=showValues?`<circle cx="${X(max.x)}" cy="${Y(max.y)}" r="6" class="max-dot"/><text x="${X(max.x)+8}" y="${Y(max.y)-8}" class="max-label">Max: ${fmt(max.y,type==='rotation'?4:3)}</text>`:'';
   el.innerHTML=`<div class="chartWrap"><svg viewBox="0 0 ${W} ${H}" class="chart"><g>${grid}${fl}<path d="${area}" fill="${color}" opacity=".12"/><path d="${path}" fill="none" stroke="${color}" stroke-width="2.6" stroke-linejoin="miter" stroke-linecap="butt"/>${marks}${values}<line x1="${p.l}" y1="${zero}" x2="${W-p.r}" y2="${zero}" class="zero-line"/></g><g class="hoverLayer"><line class="hoverV" x1="0" x2="0" y1="${p.t}" y2="${H-p.b}"/><line class="hoverH" x1="${p.l}" x2="${W-p.r}" y1="0" y2="0"/><circle class="hoverPoint" cx="0" cy="0" r="5"/><rect class="hoverBox" x="0" y="0" width="155" height="48" rx="8"/><text class="hoverText" x="0" y="0"/></g><text x="${p.l}" y="17" class="chart-title">${label}</text><text x="${W-p.r}" y="${H-8}" text-anchor="end" class="chart-title">Position (${unitLabel('pos')})</text></svg></div>`;
-  const svg=el.querySelector('svg'),vl=el.querySelector('.hoverV'),hl=el.querySelector('.hoverH'),pt=el.querySelector('.hoverPoint'),box=el.querySelector('.hoverBox'),txt=el.querySelector('.hoverText');
-  const nearest=x=>data.reduce((a,b)=>Math.abs(b.x-x)<Math.abs(a.x-x)?b:a,data[0]);
+  const svg=el.querySelector('svg'),vl=el.querySelector('.hoverV'),hl=el.querySelector('.hoverH'),pt=el.querySelector('.hoverPoint'),box=el.querySelector('.hoverBox'),txt=el.querySelector('.hoverText'),nearest=x=>data.reduce((a,b)=>Math.abs(b.x-x)<Math.abs(a.x-x)?b:a,data[0]);
   svg.addEventListener('pointermove',ev=>{const r=svg.getBoundingClientRect(),mx=(ev.clientX-r.left)/r.width*W,x=xmin+(mx-p.l)/(W-p.l-p.r)*(xmax-xmin);if(x<xmin||x>xmax)return;const q=nearest(x),px=X(q.x),py=Y(q.y),bx=Math.min(W-165,Math.max(p.l,px+12)),by=Math.max(p.t,py-62);vl.setAttribute('x1',px);vl.setAttribute('x2',px);hl.setAttribute('y1',py);hl.setAttribute('y2',py);pt.setAttribute('cx',px);pt.setAttribute('cy',py);box.setAttribute('x',bx);box.setAttribute('y',by);txt.setAttribute('x',bx+12);txt.setAttribute('y',by+19);txt.textContent=`x: ${fmt(q.x,3)} ${unitLabel('pos')} · y: ${fmt(q.y,type==='rotation'?5:3)}`;[vl,hl,pt,box,txt].forEach(e=>e.style.opacity='1')});
   svg.addEventListener('pointerleave',()=>[vl,hl,pt,box,txt].forEach(e=>e.style.opacity='0'));
  };
