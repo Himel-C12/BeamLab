@@ -39,7 +39,7 @@ def _nodes(values: list[float]) -> list[float]:
 
 def _node_index(nodes: list[float], x: float) -> int:
     for i, p in enumerate(nodes):
-        if abs(p - x) <= TOL:
+        if abs(x - p) <= TOL:
             return i
     raise ValueError(f"Position {x:g} is not an analysis node")
 
@@ -54,21 +54,30 @@ def _k(EI: float, L: float) -> np.ndarray:
     ], dtype=float)
 
 
+def _linear_udl(q0: float, q1: float, L: float) -> np.ndarray:
+    """Consistent nodal load vector for a linearly varying downward load.
+
+    q0 and q1 are the load intensities at the left and right ends of the
+    element. Vertical displacement is positive upward and rotation follows
+    the beam DOF convention used by the stiffness matrix.
+    """
+    return 1000.0 * np.array([
+        -L * (7.0 * q0 + 3.0 * q1) / 20.0,
+        -L * L * (3.0 * q0 + 2.0 * q1) / 60.0,
+        -L * (3.0 * q0 + 7.0 * q1) / 20.0,
+        L * L * (2.0 * q0 + 3.0 * q1) / 60.0,
+    ], dtype=float)
+
+
 def _udl(q: float, L: float) -> np.ndarray:
-    # q is positive downward; vertical DOFs are positive upward.
-    return np.array([-q * L / 2, -q * L * L / 12,
-                     -q * L / 2, q * L * L / 12], dtype=float)
+    return _linear_udl(q, q, L)
 
 
 def solve_beam(model: dict) -> dict:
-    """Solve a beam in SI-consistent stiffness units.
+    """Solve a beam using Euler-Bernoulli direct stiffness.
 
-    Input: length in m, E in GPa, I in mm^4, force in kN, moment in kN-m.
-    Output: force in kN, moment in kN-m, deflection in mm, rotation in rad.
-
-    An internal hinge shares vertical displacement with the beam but has two
-    independent rotational DOFs. Therefore it transfers shear but no bending
-    moment, which is the defining structural behavior of an internal hinge.
+    Input units: length m, E GPa, I mm^4, force kN, moment kN-m.
+    Output units: force kN, moment kN-m, deflection mm, rotation rad.
     """
     spans = model.get("spans") or []
     supports = model.get("supports") or []
@@ -119,8 +128,6 @@ def solve_beam(model: dict) -> dict:
     if any(n in {0, len(nodes) - 1} for n in hinges):
         raise ValueError("An internal hinge must lie inside the beam, not at an end")
 
-    # One vertical DOF per physical node. Ordinary nodes share one rotation;
-    # hinge nodes get one independent rotation for each adjacent member.
     v_dof = list(range(len(nodes)))
     next_dof = len(nodes)
     shared_rot: dict[int, int] = {}
@@ -145,7 +152,10 @@ def solve_beam(model: dict) -> dict:
             raise ValueError("Could not assign section properties to an element")
         _, _, E, I = section
         elements.append({
-            "i": e, "j": e + 1, "E": E, "I": I,
+            "i": e,
+            "j": e + 1,
+            "E": E,
+            "I": I,
             "dofs": [v_dof[e], rotation(e), v_dof[e + 1], rotation(e + 1)],
             "length": b - a,
         })
@@ -165,23 +175,28 @@ def solve_beam(model: dict) -> dict:
         value = _num(load.get("value"), "load value")
         if t in {"point", "point_load"}:
             n = _node_index(nodes, xpos(load.get("position"), "point load position"))
-            F[v_dof[n]] -= value * 1000
+            angle = np.deg2rad(_num(load.get("angle", 0), "point load angle"))
+            F[v_dof[n]] -= value * np.cos(angle) * 1000.0
         elif t == "moment":
             n = _node_index(nodes, xpos(load.get("position"), "moment position"))
             rot = shared_rot.get(n)
             if rot is None:
-                # A moment applied exactly at a hinge is ambiguous unless the
-                # user specifies its side; reject it instead of guessing.
                 raise ValueError("A concentrated moment cannot be applied directly at an internal hinge")
-            F[rot] += value * 1000
+            F[rot] += value * 1000.0
         else:
             a = xpos(load.get("position"), "UDL start")
             b = xpos(load.get("to"), "UDL end")
-            q = value
+            q0 = value
+            q1 = _num(load.get("value2", load.get("value_2", value)), "UDL end intensity")
+            span = b - a
             for el in elements:
                 ea, eb = nodes[el["i"]], nodes[el["j"]]
                 if ea >= a - TOL and eb <= b + TOL:
-                    fe = _udl(q, eb - ea) * 1000
+                    t0 = (ea - a) / span
+                    t1 = (eb - a) / span
+                    qa = q0 + (q1 - q0) * t0
+                    qb = q0 + (q1 - q0) * t1
+                    fe = _linear_udl(qa, qb, eb - ea)
                     el["f_load"] += fe
                     F[np.array(el["dofs"])] += fe
 
@@ -242,8 +257,8 @@ def solve_beam(model: dict) -> dict:
             reactions.append({**meta, "vertical_kN": 0.0, "moment_kNm": 0.0})
             continue
         n = _node_index(nodes, meta["position"])
-        moment = residual[shared_rot[n]] / 1000 if meta["type"] == "fixed" else 0.0
-        reactions.append({**meta, "vertical_kN": residual[v_dof[n]] / 1000, "moment_kNm": moment})
+        moment = residual[shared_rot[n]] / 1000.0 if meta["type"] == "fixed" else 0.0
+        reactions.append({**meta, "vertical_kN": residual[v_dof[n]] / 1000.0, "moment_kNm": moment})
 
     hinge_checks = []
     for n in sorted(hinges):
@@ -251,8 +266,8 @@ def solve_beam(model: dict) -> dict:
         right_force = elements[n]["k"] @ d[elements[n]["dofs"]] - elements[n]["f_load"]
         hinge_checks.append({
             "position": nodes[n],
-            "left_moment_kNm": left_force[3] / 1000,
-            "right_moment_kNm": right_force[1] / 1000,
+            "left_moment_kNm": left_force[3] / 1000.0,
+            "right_moment_kNm": right_force[1] / 1000.0,
         })
 
     applied_vertical = 0.0
@@ -260,13 +275,30 @@ def solve_beam(model: dict) -> dict:
         t = _kind(load.get("type"))
         value = _num(load.get("value"), "load value")
         if t in {"point", "point_load"}:
-            applied_vertical -= value
+            angle = np.deg2rad(_num(load.get("angle", 0), "point load angle"))
+            applied_vertical -= value * np.cos(angle)
         elif t in {"udl", "distributed", "uniform"}:
-            applied_vertical -= value * (float(load["to"]) - float(load["position"]))
+            a = float(load["position"])
+            b = float(load["to"])
+            q1 = float(load.get("value2", load.get("value_2", value)))
+            applied_vertical -= (value + q1) * (b - a) / 2.0
     reaction_sum = sum(r["vertical_kN"] for r in reactions)
+
+    elements_out = []
+    for el in elements:
+        i, j = el["i"], el["j"]
+        elements_out.append({
+            "x0": nodes[i],
+            "x1": nodes[j],
+            "v0_mm": d[el["dofs"][0]] * 1000.0,
+            "v1_mm": d[el["dofs"][2]] * 1000.0,
+            "theta0_rad": d[el["dofs"][1]],
+            "theta1_rad": d[el["dofs"][3]],
+        })
 
     return {
         "nodes": nodes_out,
+        "elements": elements_out,
         "reactions": reactions,
         "hinge_checks": hinge_checks,
         "equilibrium": {"vertical_error_kN": reaction_sum + applied_vertical},
