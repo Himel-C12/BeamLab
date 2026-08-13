@@ -147,6 +147,8 @@
 /* Fixed-support orientation repair.
    Left end (position 0) -> hatching on the left.
    Every other fixed support -> hatching on the right.
+   Hatch lines are extended so the lowest hatch reaches the beam centerline,
+   removing the visible gap between the beam and the support hatching.
 */
 (() => {
   function repairFixedSupports() {
@@ -158,7 +160,13 @@
       if (!support || !wall || !hatch) return;
       const x = Number(wall.getAttribute('x1')), y = Number(wall.getAttribute('y1'));
       const side = Math.abs(Number(support.position)) < 1e-9 ? -1 : 1;
-      hatch.setAttribute('d', `M ${x + side*20} ${y} l ${-side*20} -8 M ${x + side*20} ${y+14} l ${-side*20} -8 M ${x + side*20} ${y+28} l ${-side*20} -8 M ${x + side*20} ${y+42} l ${-side*20} -8`);
+      hatch.setAttribute('d',
+        `M ${x + side*20} ${y} l ${-side*20} -8` +
+        ` M ${x + side*20} ${y+14} l ${-side*20} -8` +
+        ` M ${x + side*20} ${y+28} l ${-side*20} -8` +
+        ` M ${x + side*20} ${y+42} l ${-side*20} -8` +
+        ` M ${x + side*20} ${y+48} l ${-side*20} -8`
+      );
     });
   }
   let scheduled = false;
