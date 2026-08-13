@@ -15,16 +15,13 @@
     return el;
   }
 
-  function getLoadInputs() {
-    return [...document.querySelectorAll('#loadRows [data-load][data-field="value"]')];
-  }
-
   function getLoadMeta(index) {
     const row = document.querySelector(`#loadRows [data-load="${index}"]`)?.closest('tr');
     if (!row) return { value: 0, angle: 0 };
-    const value = num(row.querySelector('[data-field="value"]')?.value);
-    const angle = num(row.querySelector('[data-field="angle"]')?.value);
-    return { value, angle };
+    return {
+      value: num(row.querySelector('[data-field="value"]')?.value),
+      angle: num(row.querySelector('[data-field="angle"]')?.value)
+    };
   }
 
   function arrowPath(x1, y1, x2, y2, size = 7) {
@@ -45,19 +42,18 @@
   }
 
   function fixPointLoad(group, index, beamY) {
-    const meta = getLoadMeta(index);
-    const value = meta.value;
-    const angle = meta.angle;
-    const beamLine = group.querySelector('line');
-    if (!beamLine) return;
-    const x = num(beamLine.getAttribute('x1'));
+    const { value, angle } = getLoadMeta(index);
+    const originalLine = group.querySelector('line');
+    if (!originalLine) return;
+    const x = num(originalLine.getAttribute('x1'));
     const endpointY = beamY - 4;
     const positive = value >= 0;
     const theta = angle * Math.PI / 180;
 
-    // Engineering convention used by the reference:
-    // +P points downward, with +angle measured counter-clockwise
-    // from the downward vertical (therefore +25° points down-left).
+    // Reference convention: positive force is downward. Positive angle is
+    // measured from the downward vertical toward the left, so +25° points
+    // down-left exactly like the supplied reference image. A negative force
+    // reverses the complete vector and therefore points upward-right.
     let dx = -Math.sin(theta), dy = Math.cos(theta);
     if (!positive) { dx = -dx; dy = -dy; }
 
@@ -67,12 +63,11 @@
     const tailX = positive ? headX - dx * len : x;
     const tailY = positive ? headY - dy * len : endpointY;
 
-    const children = [...group.children];
-    children.forEach(c => c.remove());
-
-    const line = svgEl('line', { x1: tailX, y1: tailY, x2: headX, y2: headY });
-    const head = svgEl('path', { d: arrowPath(tailX, tailY, headX, headY), class: 'point-arrow-head' });
-    group.append(line, head);
+    [...group.children].forEach(c => c.remove());
+    group.append(
+      svgEl('line', { x1: tailX, y1: tailY, x2: headX, y2: headY }),
+      svgEl('path', { d: arrowPath(tailX, tailY, headX, headY), class: 'point-arrow-head' })
+    );
 
     const label = svgEl('text', {
       x: positive ? tailX : headX,
@@ -83,17 +78,15 @@
     group.appendChild(label);
 
     if (Math.abs(angle) > 0.001) {
-      // Dashed vertical reference from the application point and a small
-      // angle arc, matching the conventional angular-force sketch.
-      const ref = svgEl('line', {
+      group.appendChild(svgEl('line', {
         x1: x, y1: endpointY - 2, x2: x, y2: endpointY - 48,
         class: 'force-angle-reference'
-      });
-      const arcCx = x, arcCy = endpointY - 4, r = 27;
+      }));
       const signedAngle = positive ? angle : angle + 180;
-      const start = -90;
-      const end = start + signedAngle;
-      const arc = svgEl('path', { d: arcPath(arcCx, arcCy, r, start, end), class: 'force-angle-arc' });
+      group.appendChild(svgEl('path', {
+        d: arcPath(x, endpointY - 4, 27, -90, -90 + signedAngle),
+        class: 'force-angle-arc'
+      }));
       const angleText = svgEl('text', {
         x: x + (angle >= 0 ? -32 : 32),
         y: endpointY - 36,
@@ -101,7 +94,7 @@
         class: 'force-angle-text'
       });
       angleText.textContent = `${Math.abs(angle).toFixed(2)}°`;
-      group.append(ref, arc, angleText);
+      group.appendChild(angleText);
     }
   }
 
@@ -112,7 +105,7 @@
     if (text) text.textContent = `${value < 0 ? '-' : ''}${fmtLocal(Math.abs(value), 3)} ${unitLabel('moment')}`;
   }
 
-  function addDetailedDimensions(svg, width, height, pad, beamY, totalLength) {
+  function addDetailedDimensions(svg, width, pad, beamY, totalLength) {
     const old = svg.querySelector('.detailed-dimensions');
     if (old) old.remove();
 
@@ -123,27 +116,45 @@
       positions.push(Number(l.position));
       if (t === 'udl') positions.push(Number(l.to));
     });
-    const xs = [...new Set(positions.filter(Number.isFinite).filter(x => x >= 0 && x <= totalLength).map(x => Math.round(x * 1e9) / 1e9))].sort((a,b) => a-b);
+
+    const xs = [...new Set(
+      positions.filter(Number.isFinite).filter(x => x >= 0 && x <= totalLength)
+        .map(x => Math.round(x * 1e9) / 1e9)
+    )].sort((a, b) => a - b);
     if (xs.length < 2) return;
 
     const xOf = p => pad + p * (width - 2 * pad) / Math.max(totalLength, 1);
     const g = svgEl('g', { class: 'detailed-dimensions' });
     const y = beamY + 100;
-    const labelY = y + 25;
 
-    g.appendChild(svgEl('line', { x1: xOf(0), y1: y, x2: xOf(totalLength), y2: y, class: 'dimension-line' }));
+    g.appendChild(svgEl('line', {
+      x1: xOf(0), y1: y, x2: xOf(totalLength), y2: y,
+      class: 'dimension-line'
+    }));
+
     xs.forEach(p => {
       const x = xOf(p);
-      g.appendChild(svgEl('line', { x1: x, y1: y - 6, x2: x, y2: y + 6, class: 'dimension-tick' }));
-      const t = svgEl('text', { x, y: labelY, 'text-anchor': 'middle', class: 'dimension-point-label' });
-      t.textContent = `${fmtLocal(displayValue(p, 'pos'), 3)} ${unitLabel('pos')}`;
-      g.appendChild(t);
+      g.appendChild(svgEl('line', {
+        x1: x, y1: y - 6, x2: x, y2: y + 6,
+        class: 'dimension-tick'
+      }));
+      const label = svgEl('text', {
+        x, y: y + 25, 'text-anchor': 'middle', class: 'dimension-point-label'
+      });
+      label.textContent = `${fmtLocal(displayValue(p, 'pos'), 3)} ${unitLabel('pos')}`;
+      g.appendChild(label);
     });
 
-    // Keep a clean overall dimension below the individual position marks.
     const overallY = y + 45;
-    g.appendChild(svgEl('line', { x1: xOf(0), y1: overallY, x2: xOf(totalLength), y2: overallY, class: 'dimension-overall-line' }));
-    const overall = svgEl('text', { x: (xOf(0) + xOf(totalLength)) / 2, y: overallY + 20, 'text-anchor': 'middle', class: 'dimension-text' });
+    g.appendChild(svgEl('line', {
+      x1: xOf(0), y1: overallY, x2: xOf(totalLength), y2: overallY,
+      class: 'dimension-overall-line'
+    }));
+    const overall = svgEl('text', {
+      x: (xOf(0) + xOf(totalLength)) / 2,
+      y: overallY + 20,
+      'text-anchor': 'middle', class: 'dimension-text'
+    });
     overall.textContent = `${fmtLocal(displayValue(totalLength, 'length'), 3)} ${unitLabel('length')}`;
     g.appendChild(overall);
     svg.appendChild(g);
@@ -152,23 +163,18 @@
   function repairBeamVisuals() {
     const canvas = document.querySelector('#beamCanvas');
     const svg = canvas?.querySelector('svg');
-    if (!svg || canvas.dataset.visualRepairing === '1') return;
+    if (!svg || canvas.dataset.visualRepairing === '1' || canvas._visualRepairSvg === svg) return;
     canvas.dataset.visualRepairing = '1';
-
     try {
+      canvas._visualRepairSvg = svg;
       const beamLine = svg.querySelector('.beam-line');
       const beamY = beamLine ? num(beamLine.getAttribute('y1')) : 105;
       svg.querySelectorAll('.point-load').forEach((g, i) => fixPointLoad(g, i, beamY));
       svg.querySelectorAll('.moment-load').forEach((g, i) => fixMomentLoad(g, i));
-
       const vb = svg.viewBox?.baseVal;
-      const width = vb?.width || 1100;
-      const height = vb?.height || 270;
-      const pad = 70;
-      addDetailedDimensions(svg, width, height, pad, beamY, totalLength());
+      addDetailedDimensions(svg, vb?.width || 1100, 70, beamY, totalLength());
     } finally {
       canvas.dataset.visualRepairing = '0';
-      canvas.dataset.visualRepaired = '1';
     }
   }
 
@@ -176,10 +182,7 @@
     const canvas = document.querySelector('#beamCanvas');
     if (!canvas || canvas.dataset.visualRepairObserver) return;
     canvas.dataset.visualRepairObserver = '1';
-    const observer = new MutationObserver(() => {
-      if (canvas.dataset.visualRepairing === '1') return;
-      repairBeamVisuals();
-    });
+    const observer = new MutationObserver(() => repairBeamVisuals());
     observer.observe(canvas, { childList: true, subtree: true });
     repairBeamVisuals();
   }
