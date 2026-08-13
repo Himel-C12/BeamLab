@@ -20,29 +20,12 @@
 
   function moment(group,l,g){
     if(!group||!l)return;
-    const x=g.xOf(l.position),y=g.beamY-4,r=34,positive=num(l.value)>=0;
+    const x=g.xOf(l.position),y=g.beamY-45,positive=num(l.value)>=0;
     while(group.firstChild)group.removeChild(group.firstChild);
-
-    /*
-      Moment symbols follow the requested circular-arrow convention:
-        +M = ↺ counter-clockwise
-        -M = ↻ clockwise
-      The arc is deliberately almost a full circle, rather than a short
-      semicircle, so the symbol reads as a true moment arrow.
-    */
-    const rad=d=>d*Math.PI/180;
-    const startDeg=positive?40:320;
-    const endDeg=positive?340:20;
-    const sweep=positive?0:1;
-    const sx=x+r*Math.cos(rad(startDeg)),sy=y+r*Math.sin(rad(startDeg));
-    const ex=x+r*Math.cos(rad(endDeg)),ey=y+r*Math.sin(rad(endDeg));
-    group.appendChild(make('path',{d:`M ${sx} ${sy} A ${r} ${r} 0 1 ${sweep} ${ex} ${ey}`,class:'moment-arrow-arc',fill:'none'}));
-
-    // Tangent direction at the arc end: up-left for ↺, down-right for ↻.
-    const tangent=positive?[-Math.sin(rad(endDeg)),-Math.cos(rad(endDeg))]:[Math.sin(rad(endDeg)),Math.cos(rad(endDeg))];
-    group.appendChild(make('path',{d:head(ex,ey,tangent[0],tangent[1],10),class:'moment-arrow-head'}));
-
-    const lab=make('text',{x,y:30,'text-anchor':'middle'});
+    const icon=make('text',{x,y,'text-anchor':'middle','dominant-baseline':'central','font-family':'Segoe UI Symbol,Arial Unicode MS,Arial,sans-serif','font-size':'62','font-weight':'600',fill:'currentColor',class:'moment-sign-symbol'});
+    icon.textContent=positive?'\u21ba':'\u21bb';
+    group.appendChild(icon);
+    const lab=make('text',{x,y:y-43,'text-anchor':'middle'});
     lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;
     group.appendChild(lab);
   }
@@ -56,7 +39,7 @@
 
   function repair(){const c=document.querySelector('#beamCanvas'),svg=c?.querySelector('svg');if(!svg||typeof state==='undefined'||c?._beamSymbolRepairRunning)return;const g=geom(svg);if(!g)return;c._beamSymbolRepairRunning=true;try{supports(svg,g);loads(svg,g);}finally{c._beamSymbolRepairRunning=false;}}
 
-  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head,#beamCanvas .moment-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-arrow-arc{stroke:currentColor;stroke-width:2.6;stroke-linecap:round}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-symbol{fill:currentColor}`;document.head.appendChild(st);
   let busy=false;const schedule=()=>{if(busy)return;busy=true;requestAnimationFrame(()=>{busy=false;repair();});};
   function install(){const c=document.querySelector('#beamCanvas');if(!c||c._beamSymbolObserverInstalled)return;c._beamSymbolObserverInstalled=true;new MutationObserver(schedule).observe(c,{childList:true,subtree:true});repair();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();setTimeout(install,0);setTimeout(install,250);setTimeout(install,1000);
