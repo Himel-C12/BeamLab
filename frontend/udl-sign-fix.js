@@ -40,8 +40,6 @@
 
     while (group.firstChild) group.removeChild(group.firstChild);
 
-    const topY = beamY - 78;
-    const bottomY = beamY + 78;
     const amp = 62;
     const count = Math.max(8, Math.min(18, Math.ceil(Math.abs(X1 - X0) / 35)));
 
@@ -54,8 +52,7 @@
       envelope.push([x, yFor(q)]);
     }
 
-    const line = el('line', { x1: X0, y1: envelope[0][1], x2: X1, y2: envelope[envelope.length - 1][1] });
-    group.appendChild(line);
+    group.appendChild(el('line', { x1: X0, y1: envelope[0][1], x2: X1, y2: envelope[envelope.length - 1][1] }));
 
     const arrows = Math.max(7, Math.min(14, Math.round(Math.abs(X1 - X0) / 34) + 1));
     for (let i = 0; i < arrows; i++) {
@@ -75,7 +72,6 @@
       }));
     }
 
-    const signText = q0 < 0 || q1 < 0 ? '-' : '';
     const endText = Math.abs(q1);
     const startText = Math.abs(q0);
     const label = el('text', { x: (X0 + X1) / 2, y: Math.min(...envelope.map(p => p[1])) - 12, 'text-anchor': 'middle' });
@@ -98,7 +94,11 @@
     try {
       const beam = svg.querySelector('.beam-line');
       const beamY = num(beam?.getAttribute('y1')) || 105;
-      svg.querySelectorAll('g.udl-load').forEach((g, i) => repairUDL(g, i, beamY));
+      const udlIndices = (state.loads || [])
+        .map((load, index) => ({ load, index }))
+        .filter(({ load }) => kind(load.type) === 'udl')
+        .map(({ index }) => index);
+      svg.querySelectorAll('g.udl-load').forEach((g, i) => repairUDL(g, udlIndices[i], beamY));
     } finally {
       canvas.dataset.udlSignRepairing = '0';
     }
