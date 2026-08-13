@@ -1,0 +1,265 @@
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 9mm 11mm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 9.5pt !important;
+  }
+
+  body::before {
+    content: "Beam Analyzer by Himel · Calculation Report";
+    display: block;
+    margin: 0 0 5mm;
+    padding: 0 0 3mm;
+    border-bottom: 1.2pt solid #222;
+    font-size: 16pt;
+    font-weight: 800;
+    color: #111;
+  }
+
+  .topbar {
+    display: none !important;
+  }
+
+  .layout {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .maincol {
+    width: 100% !important;
+    max-width: none !important;
+    display: block !important;
+  }
+
+  .sidecol,
+  .actionsBar,
+  #validation,
+  #error,
+  footer,
+  .viewTools,
+  .diagramTools,
+  .cardHead > button,
+  .actions,
+  .danger,
+  .hint,
+  .message,
+  #engineStatus,
+  #afd[hidden] {
+    display: none !important;
+  }
+
+  .card {
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    margin: 0 0 5mm !important;
+    padding: 4mm !important;
+    background: #fff !important;
+    color: #111 !important;
+    border: 0.7pt solid #bbb !important;
+    border-radius: 2mm !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .beamCard {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .beamViewport {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    border: 0.5pt solid #ccc !important;
+  }
+
+  #beamCanvas {
+    width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+  }
+
+  #beamCanvas svg {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 62mm !important;
+  }
+
+  .grid2 {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 4mm !important;
+    break-inside: avoid;
+  }
+
+  .grid2 > .card {
+    margin-bottom: 0 !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.2pt !important;
+  }
+
+  th,
+  td {
+    padding: 1.5mm 1.2mm !important;
+    border-bottom: 0.5pt solid #ccc !important;
+    color: #111 !important;
+  }
+
+  input,
+  select {
+    border: 0 !important;
+    background: transparent !important;
+    color: #111 !important;
+    padding: 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    font: inherit !important;
+  }
+
+  .resultsCard {
+    break-before: auto;
+  }
+
+  .metrics {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 2mm !important;
+  }
+
+  .metrics > div {
+    padding: 2.5mm !important;
+    border: 0.5pt solid #ccc !important;
+    background: #f7f7f7 !important;
+    color: #111 !important;
+    border-radius: 1.5mm !important;
+  }
+
+  .resultsCard h3 {
+    margin: 3mm 0 1.5mm !important;
+    font-size: 10pt !important;
+  }
+
+  .diagramsCard {
+    break-before: auto;
+  }
+
+  .diagramGrid {
+    display: block !important;
+  }
+
+  .diagramBlock {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 5mm !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    page-break-after: auto;
+    border: 0.6pt solid #bbb !important;
+    background: #fff !important;
+    color: #111 !important;
+    border-radius: 1.5mm !important;
+  }
+
+  .diagramBlock h3 {
+    margin: 0 !important;
+    padding: 2.5mm 3mm !important;
+    font-size: 10pt !important;
+    color: #111 !important;
+    background: #f1f1f1 !important;
+    border-bottom: 0.5pt solid #ccc !important;
+  }
+
+  .chartBox {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .chartWrap,
+  .chart {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 70mm !important;
+  }
+
+  .chartBox.collapsed {
+    display: block !important;
+  }
+
+  .aiOverview {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 3mm !important;
+    color: #111 !important;
+    background: #f7f7f7 !important;
+    border: 0.7pt solid #aaa !important;
+  }
+
+  .aiOverview * {
+    color: #111 !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  p,
+  strong,
+  small,
+  span,
+  label {
+    color: #111 !important;
+  }
+
+  h1 { font-size: 14pt !important; }
+  h2 { font-size: 11pt !important; }
+
+  .cardHead {
+    margin-bottom: 2.5mm !important;
+  }
+
+  .status,
+  .badge {
+    color: #111 !important;
+    background: #eee !important;
+    border: 0.5pt solid #aaa !important;
+  }
+
+  /* Keep each diagram together, but allow the report to continue naturally. */
+  .diagramBlock + .diagramBlock {
+    margin-top: 0 !important;
+  }
+
+  /* Avoid cutting tables and the calculation overview across pages. */
+  .resultsCard,
+  .grid2,
+  .aiOverview,
+  .diagramBlock {
+    orphans: 3;
+    widows: 3;
+  }
+}
