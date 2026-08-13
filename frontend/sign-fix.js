@@ -25,16 +25,15 @@
     const positive=num(l.value)>=0;
     while(group.firstChild)group.removeChild(group.firstChild);
 
-    // Use the actual Unicode moment symbols requested: ↺ for +M and ↻ for -M.
-    // Render them as SVG text at a deliberately large size so they remain
-    // clearly visible at normal beam zoom levels.
+    // Compact Unicode moment symbol: +M = ↺, -M = ↻.
+    // Keep it close to the beam and use a normal-weight glyph so it does not dominate the diagram.
     const icon=make('text',{
       x,
-      y:beamY-70,
+      y:beamY-38,
       'text-anchor':'middle',
       'dominant-baseline':'central',
       'font-family':'Segoe UI Symbol, Arial Unicode MS, DejaVu Sans, sans-serif',
-      'font-size':'72',
+      'font-size':'48',
       'font-weight':'400',
       fill:'currentColor',
       class:'moment-sign-symbol'
@@ -42,7 +41,7 @@
     icon.textContent=positive?'↺':'↻';
     group.appendChild(icon);
 
-    const lab=make('text',{x,y:beamY-112,'text-anchor':'middle',class:'moment-load-label'});
+    const lab=make('text',{x,y:beamY-78,'text-anchor':'middle',class:'moment-load-label'});
     lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;
     group.appendChild(lab);
   }
@@ -56,7 +55,7 @@
 
   function repair(){const c=document.querySelector('#beamCanvas'),svg=c?.querySelector('svg');if(!svg||typeof state==='undefined'||c?._beamSymbolRepairRunning)return;const g=geom(svg);if(!g)return;c._beamSymbolRepairRunning=true;try{supports(svg,g);loads(svg,g);}finally{c._beamSymbolRepairRunning=false;}}
 
-  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-symbol{font-size:72px!important;line-height:1;fill:currentColor;stroke:none;paint-order:normal}#beamCanvas .moment-load-label{fill:currentColor}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-symbol{font-size:48px!important;line-height:1;fill:currentColor;stroke:none;paint-order:normal;font-weight:400}#beamCanvas .moment-load-label{fill:currentColor}`;document.head.appendChild(st);
   let busy=false;const schedule=()=>{if(busy)return;busy=true;requestAnimationFrame(()=>{busy=false;repair();});};
   function install(){const c=document.querySelector('#beamCanvas');if(!c||c._beamSymbolObserverInstalled)return;c._beamSymbolObserverInstalled=true;new MutationObserver(schedule).observe(c,{childList:true,subtree:true});repair();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();setTimeout(install,0);setTimeout(install,250);setTimeout(install,1000);
