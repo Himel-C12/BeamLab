@@ -53,3 +53,24 @@ body.dark .moment-load text{fill:#ffab63}
 .hoverBox{fill:#101722;stroke:rgba(255,255,255,.08);filter:drop-shadow(0 8px 18px rgba(0,0,0,.28))}
 body.dark .hoverBox{fill:rgba(11,17,24,.94);stroke:rgba(119,181,255,.18)}
 @media(max-width:900px){.logoMark{width:46px;flex-basis:46px}.logoMark img{max-width:46px;height:44px}}
+
+/* Beam model: keep support labels clear of the symbols. */
+#beamCanvas .support-label{transform:translateY(10px)}
+#beamCanvas .position-label{transform:translateY(10px)}
+
+/* The beam already shows its overall length below the model; don't repeat it. */
+#beamCanvas .dimension-overall-line,
+#beamCanvas .dimension-text{display:none!important}
+
+/* Individual position dimensions must remain readable in dark mode. */
+#beamCanvas .dimension-line{stroke:#9aa9bb;stroke-width:1.1;opacity:.82}
+#beamCanvas .dimension-tick{stroke:#c0cad6;stroke-width:1.2;opacity:.96}
+#beamCanvas .dimension-point-label{
+  fill:#d7e0ea;
+  font-size:11px;
+  paint-order:stroke;
+  stroke:#0b1016;
+  stroke-width:3px;
+  stroke-linejoin:round;
+}
+body:not(.dark) #beamCanvas .dimension-point-label{fill:#58697c;stroke:#fff;stroke-width:3px}
