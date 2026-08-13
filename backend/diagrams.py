@@ -81,7 +81,11 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
                 V += P
                 M += P * (x - p)
             elif t == "moment" and p <= x + 1e-10:
-                M += float(load.get("value", 0.0))
+                # The applied moment sign follows the UI convention:
+                # +M is counter-clockwise and -M is clockwise. For the
+                # sagging-positive internal BMD, the applied couple enters
+                # with the opposite sign.
+                M -= float(load.get("value", 0.0))
             elif t in {"udl", "distributed", "uniform"}:
                 dv, dm = _udl_result(load, x)
                 V += dv
