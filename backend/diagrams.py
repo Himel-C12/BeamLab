@@ -67,6 +67,11 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
             if p <= x + 1e-10:
                 R = float(r.get("vertical_kN", 0.0))
                 V += R
+                # Fixed-support reaction moments are external couples. The
+                # BMD convention used here is sagging-positive, so a positive
+                # solver reaction moment enters the internal moment with the
+                # opposite sign. This is essential for cantilevers.
+                M -= float(r.get("moment_kNm", 0.0))
                 M += R * (x - p)
         for load in loads:
             t = _kind(load.get("type"))
