@@ -9,9 +9,9 @@ const fmt = (v,n=3) => Number(v).toFixed(n).replace(/\.0+$/,'').replace(/(\.\d*?
 const esc = v => String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 
 const initialState = {
-  spans:[{length:8,E:200,I:100000000}],
-  supports:[{id:1,type:'pin',position:0,settlement:0},{id:2,type:'roller',position:8,settlement:0}],
-  loads:[{id:1,type:'point',value:10,position:4,angle:0}]
+  spans: [{length:4,E:200,I:100000000}],
+  supports: [{id:1,type:'fixed',position:0,settlement:0}],
+  loads: [{id:1,type:'udl',value:8,value2:8,position:0,to:4}]
 };
 let state=clone(initialState), history=[], future=[];
 let pyodide=null, solverReady=false, solving=false, lastResult=null;
