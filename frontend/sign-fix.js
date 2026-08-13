@@ -19,13 +19,33 @@
   }
 
   function moment(group,l,g){
-    if(!group||!l)return;const x=g.xOf(l.position),y=g.beamY-4,r=22,p=num(l.value)>=0;while(group.firstChild)group.removeChild(group.firstChild);
-    // Use the short arc. large-arc=1 previously made the positive arc travel the long way and visually reversed the convention.
-    const sd=p?45:225,ed=135,sweep=p?0:1,rad=d=>d*Math.PI/180;
-    const sx=x+r*Math.cos(rad(sd)),sy=y+r*Math.sin(rad(sd)),ex=x+r*Math.cos(rad(ed)),ey=y+r*Math.sin(rad(ed));
+    if(!group||!l)return;
+    const x=g.xOf(l.position),y=g.beamY-4,r=42,positive=num(l.value)>=0;
+    while(group.firstChild)group.removeChild(group.firstChild);
+
+    /*
+      Draw the sign convention explicitly on the LEFT side of the moment.
+      In SVG screen coordinates, a counter-clockwise rotation travels
+      downward on the left side. Therefore:
+        +M : upper-left -> lower-left, arrowhead points DOWN
+        -M : lower-left -> upper-left, arrowhead points UP
+      Using this fixed short arc avoids the ambiguous long/short SVG arc
+      interpretation that caused the previous sign reversal.
+    */
+    const startDeg=positive?225:135;
+    const endDeg=positive?135:225;
+    const sweep=positive?0:1;
+    const rad=d=>d*Math.PI/180;
+    const sx=x+r*Math.cos(rad(startDeg)),sy=y+r*Math.sin(rad(startDeg));
+    const ex=x+r*Math.cos(rad(endDeg)),ey=y+r*Math.sin(rad(endDeg));
     group.appendChild(make('path',{d:`M ${sx} ${sy} A ${r} ${r} 0 0 ${sweep} ${ex} ${ey}`,class:'moment-arrow-arc',fill:'none'}));
-    const t=p?1:-1;group.appendChild(make('path',{d:head(ex,ey,t,t,10),class:'moment-arrow-head'}));
-    const lab=make('text',{x,y:30,'text-anchor':'middle'});lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;group.appendChild(lab);
+
+    const dirY=positive?1:-1;
+    group.appendChild(make('path',{d:head(ex,ey,0,dirY,10),class:'moment-arrow-head'}));
+
+    const lab=make('text',{x,y:30,'text-anchor':'middle'});
+    lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;
+    group.appendChild(lab);
   }
 
   function loads(svg,g){
