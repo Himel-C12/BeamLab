@@ -20,12 +20,19 @@
 
   function moment(group,l,g){
     if(!group||!l)return;
-    const x=g.xOf(l.position),y=g.beamY-45,positive=num(l.value)>=0;
+    const x=g.xOf(l.position),y=g.beamY-88,positive=num(l.value)>=0;
+    const size=82;
     while(group.firstChild)group.removeChild(group.firstChild);
-    const icon=make('text',{x,y,'text-anchor':'middle','dominant-baseline':'central','font-family':'Segoe UI Symbol,Arial Unicode MS,Arial,sans-serif','font-size':'62','font-weight':'600',fill:'currentColor',class:'moment-sign-symbol'});
-    icon.textContent=positive?'\u21ba':'\u21bb';
-    group.appendChild(icon);
-    const lab=make('text',{x,y:y-43,'text-anchor':'middle'});
+
+    // Use the supplied arrow artwork instead of drawing a synthetic SVG arc.
+    // The source artwork is the clockwise symbol. Mirroring it horizontally
+    // produces the matching counter-clockwise symbol.
+    const href=new URL('frontend/clockwise-arrow.svg',document.baseURI).href;
+    const image=make('image',{x:positive?x-size/2:x-size/2,y,width:size,height:size,preserveAspectRatio:'xMidYMid meet',href,class:'moment-sign-icon'});
+    if(positive) image.setAttribute('transform',`translate(${2*x},0) scale(-1,1)`);
+    group.appendChild(image);
+
+    const lab=make('text',{x,y:y-10,'text-anchor':'middle'});
     lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;
     group.appendChild(lab);
   }
@@ -39,7 +46,7 @@
 
   function repair(){const c=document.querySelector('#beamCanvas'),svg=c?.querySelector('svg');if(!svg||typeof state==='undefined'||c?._beamSymbolRepairRunning)return;const g=geom(svg);if(!g)return;c._beamSymbolRepairRunning=true;try{supports(svg,g);loads(svg,g);}finally{c._beamSymbolRepairRunning=false;}}
 
-  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-symbol{fill:currentColor}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`#beamCanvas .support-ground-surfaces{pointer-events:none}#beamCanvas .support-ground-line{stroke:currentColor;stroke-width:2;opacity:.95}#beamCanvas .support-ground-hatch{stroke:currentColor;stroke-width:1.4;opacity:.9}#beamCanvas .support-label,#beamCanvas .position-label{transform:none!important}#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-icon{overflow:visible}`;document.head.appendChild(st);
   let busy=false;const schedule=()=>{if(busy)return;busy=true;requestAnimationFrame(()=>{busy=false;repair();});};
   function install(){const c=document.querySelector('#beamCanvas');if(!c||c._beamSymbolObserverInstalled)return;c._beamSymbolObserverInstalled=true;new MutationObserver(schedule).observe(c,{childList:true,subtree:true});repair();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();setTimeout(install,0);setTimeout(install,250);setTimeout(install,1000);
