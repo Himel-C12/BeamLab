@@ -197,6 +197,8 @@
     #beamCanvas .dimension-tick { stroke: currentColor; stroke-width: 1.2; opacity: .8; }
     #beamCanvas .dimension-point-label { font-size: 11px; }
     #beamCanvas .dimension-overall-line { stroke: currentColor; stroke-width: 1; opacity: .65; }
+    #beamCanvas .support-label { transform: translateY(10px); }
+    #beamCanvas .position-label { transform: translateY(10px); }
   `;
   document.head.appendChild(style);
 
