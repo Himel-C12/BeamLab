@@ -15,17 +15,26 @@ def _point_vertical(load: dict) -> float:
 
 
 def _udl_result(load: dict, x: float) -> tuple[float, float]:
+    """Return shear and bending-moment contribution of a UDL at cut x.
+
+    Integrate the load about the actual global cut position. This matters
+    especially when the frontend has split one UDL into several small loaded
+    elements: each segment must contribute its moment about x, not about its
+    own right-hand end.
+    """
     a, b = float(load["position"]), float(load["to"])
     q0 = float(load.get("value", 0.0))
     q1 = float(load.get("value2", load.get("value_2", q0)))
     if x <= a:
         return 0.0, 0.0
     L = b - a
+    if L <= 0.0:
+        return 0.0, 0.0
     l = min(x, b) - a
-    qx = q0 + (q1 - q0) * l / L
-    W = (q0 + qx) * l / 2
-    first = q0 * l * l / 2 + (q1 - q0) * l**3 / (3 * L)
-    return -W, -(l * W - first)
+    k = (q1 - q0) / L
+    W = q0 * l + 0.5 * k * l * l
+    first = 0.5 * q0 * l * l + (k * l**3) / 3.0
+    return -W, first - W * (x - a)
 
 
 def _beam_response(el: dict, x: float) -> tuple[float, float]:
@@ -67,10 +76,6 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
             if p <= x + 1e-10:
                 R = float(r.get("vertical_kN", 0.0))
                 V += R
-                # Fixed-support reaction moments are external couples. The
-                # BMD convention used here is sagging-positive, so a positive
-                # solver reaction moment enters the internal moment with the
-                # opposite sign. This is essential for cantilevers.
                 M -= float(r.get("moment_kNm", 0.0))
                 M += R * (x - p)
         for load in loads:
@@ -81,10 +86,6 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
                 V += P
                 M += P * (x - p)
             elif t == "moment" and p <= x + 1e-10:
-                # The applied moment sign follows the UI convention:
-                # +M is counter-clockwise and -M is clockwise. For the
-                # sagging-positive internal BMD, the applied couple enters
-                # with the opposite sign.
                 M -= float(load.get("value", 0.0))
             elif t in {"udl", "distributed", "uniform"}:
                 dv, dm = _udl_result(load, x)
@@ -96,12 +97,7 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
     if not elements:
         nodes = result.get("nodes", [])
         for a, b in zip(nodes, nodes[1:]):
-            elements.append({
-                "x0": a["x"], "x1": b["x"],
-                "v0_mm": a["deflection_mm"], "v1_mm": b["deflection_mm"],
-                "theta0_rad": a.get("rotation_rad_right") or 0.0,
-                "theta1_rad": b.get("rotation_rad_left") or 0.0,
-            })
+            elements.append({"x0": a["x"], "x1": b["x"], "v0_mm": a["deflection_mm"], "v1_mm": b["deflection_mm"], "theta0_rad": a.get("rotation_rad_right") or 0.0, "theta1_rad": b.get("rotation_rad_left") or 0.0})
 
     samples = []
     for a, b in zip(xs, xs[1:]):
@@ -118,27 +114,13 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
         d, rot = _beam_response(el, x) if el else (0.0, 0.0)
         samples.append({"x": x, "shear_kN": V, "moment_kNm": M, "deflection_mm": d, "rotation_rad": rot})
 
-    # Keep explicit left/right shear values at every concentrated vertical
-    # action, including support reactions, so the SFD renders true vertical
-    # jumps rather than diagonal connections.
-    jump_positions = {
-        float(r["position"])
-        for r in supports
-        if _kind(r.get("type")) != "internal_hinge"
-    }
-    jump_positions.update(
-        float(load["position"])
-        for load in loads
-        if _kind(load.get("type")) in {"point", "point_load"}
-    )
+    jump_positions = {float(r["position"]) for r in supports if _kind(r.get("type")) != "internal_hinge"}
+    jump_positions.update(float(load["position"]) for load in loads if _kind(load.get("type")) in {"point", "point_load"})
     jumps = []
     for p in sorted(jump_positions):
         vl, ml = shear_moment(max(0.0, p - 1e-8))
         vr, mr = shear_moment(p)
-        jumps += [
-            {"x": p, "shear_kN": vl, "moment_kNm": ml, "side": "left"},
-            {"x": p, "shear_kN": vr, "moment_kNm": mr, "side": "right"},
-        ]
+        jumps += [{"x": p, "shear_kN": vl, "moment_kNm": ml, "side": "left"}, {"x": p, "shear_kN": vr, "moment_kNm": mr, "side": "right"}]
 
     hinges = [{"x": h["position"], "moment_kNm": 0.0} for h in result.get("hinge_checks", [])]
     return {"samples": samples, "jumps": jumps, "hinges": hinges}
