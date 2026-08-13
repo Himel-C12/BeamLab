@@ -208,3 +208,42 @@
   setTimeout(installVisualRepair, 250);
   setTimeout(installVisualRepair, 1000);
 })();
+
+/* High-resolution diagram inspection.
+   Do not increase solver sample density: that only makes the UI heavier.
+   The solver can keep its compact 16-samples-per-segment data; inspection
+   evaluates the value between those samples instead of snapping to one. */
+(() => {
+  const interpolate = (data, x) => {
+    if (!Array.isArray(data) || !data.length) return null;
+    if (data.length === 1) return { x, y: Number(data[0].y) };
+
+    if (x <= Number(data[0].x)) return { x, y: Number(data[0].y) };
+    const last = data[data.length - 1];
+    if (x >= Number(last.x)) return { x, y: Number(last.y) };
+
+    // Binary search keeps hover inspection O(log n), so it does not add
+    // another source of mousemove lag.
+    let lo = 0, hi = data.length - 1;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (Number(data[mid].x) <= x) lo = mid;
+      else hi = mid;
+    }
+
+    const a = data[lo], b = data[hi];
+    const ax = Number(a.x), bx = Number(b.x);
+    const ay = Number(a.y), by = Number(b.y);
+    if (Math.abs(x - ax) < 1e-10) return { x, y: ay };
+    if (Math.abs(x - bx) < 1e-10) return { x, y: by };
+    const span = bx - ax;
+    if (!Number.isFinite(span) || Math.abs(span) < 1e-12) return { x, y: ay };
+    const t = (x - ax) / span;
+    return { x, y: ay + (by - ay) * t };
+  };
+
+  // app.js uses this helper for both hover inspection and Point-of-Interest.
+  // Replacing only the sampling helper removes the 0.25-unit snapping without
+  // rebuilding charts, adding observers, or changing solver calculations.
+  window.nearestPoint = interpolate;
+})();
