@@ -20,28 +20,27 @@
 
   function moment(group,l,g){
     if(!group||!l)return;
-    const x=g.xOf(l.position),y=g.beamY-4,r=42,positive=num(l.value)>=0;
+    const x=g.xOf(l.position),y=g.beamY-4,r=34,positive=num(l.value)>=0;
     while(group.firstChild)group.removeChild(group.firstChild);
 
     /*
-      Draw the sign convention explicitly on the LEFT side of the moment.
-      In SVG screen coordinates, a counter-clockwise rotation travels
-      downward on the left side. Therefore:
-        +M : upper-left -> lower-left, arrowhead points DOWN
-        -M : lower-left -> upper-left, arrowhead points UP
-      Using this fixed short arc avoids the ambiguous long/short SVG arc
-      interpretation that caused the previous sign reversal.
+      Moment symbols follow the requested circular-arrow convention:
+        +M = ↺ counter-clockwise
+        -M = ↻ clockwise
+      The arc is deliberately almost a full circle, rather than a short
+      semicircle, so the symbol reads as a true moment arrow.
     */
-    const startDeg=positive?225:135;
-    const endDeg=positive?135:225;
-    const sweep=positive?0:1;
     const rad=d=>d*Math.PI/180;
+    const startDeg=positive?40:320;
+    const endDeg=positive?340:20;
+    const sweep=positive?0:1;
     const sx=x+r*Math.cos(rad(startDeg)),sy=y+r*Math.sin(rad(startDeg));
     const ex=x+r*Math.cos(rad(endDeg)),ey=y+r*Math.sin(rad(endDeg));
-    group.appendChild(make('path',{d:`M ${sx} ${sy} A ${r} ${r} 0 0 ${sweep} ${ex} ${ey}`,class:'moment-arrow-arc',fill:'none'}));
+    group.appendChild(make('path',{d:`M ${sx} ${sy} A ${r} ${r} 0 1 ${sweep} ${ex} ${ey}`,class:'moment-arrow-arc',fill:'none'}));
 
-    const dirY=positive?1:-1;
-    group.appendChild(make('path',{d:head(ex,ey,0,dirY,10),class:'moment-arrow-head'}));
+    // Tangent direction at the arc end: up-left for ↺, down-right for ↻.
+    const tangent=positive?[-Math.sin(rad(endDeg)),-Math.cos(rad(endDeg))]:[Math.sin(rad(endDeg)),Math.cos(rad(endDeg))];
+    group.appendChild(make('path',{d:head(ex,ey,tangent[0],tangent[1],10),class:'moment-arrow-head'}));
 
     const lab=make('text',{x,y:30,'text-anchor':'middle'});
     lab.textContent=`${num(l.value)<0?'-':''}${fmt(Math.abs(num(l.value)),3)} ${unitLabel('moment')}`;
