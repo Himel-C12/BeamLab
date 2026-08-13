@@ -9,15 +9,39 @@
     @media(max-width:700px){.aiFacts{grid-template-columns:1fr}}body.dark .aiOverview{border-color:rgba(255,255,255,.10);background:linear-gradient(135deg,rgba(50,95,150,.13),rgba(120,60,145,.08));box-shadow:0 18px 45px rgba(0,0,0,.18)}body.dark .aiOverview p{color:#a0adbd}body.dark .aiFact{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.025)}body.dark .aiFact strong{color:#8995a7}body.dark .aiBadge{background:rgba(35,74,125,.42);border-color:rgba(80,150,255,.45);color:#79b3ff}
   `;document.head.appendChild(style);
 
-  let pending=false,lastStateRef=null;
+  let pending=false,lastStateRef=null,retryTimer=null;
   const queue=()=>{pending=true};
   document.addEventListener('input',e=>{if(e.target.matches('[data-span],[data-support],[data-load]'))queue()});
   document.addEventListener('change',e=>{if(e.target.matches('[data-span],[data-support],[data-load]'))queue()});
-  document.addEventListener('click',e=>{if(e.target.closest('#addSpan,#addSupport,[data-add-load],#newBtn,#undoBtn,#redoBtn,.example,[data-remove-span],[data-remove-support],[data-remove-load]'))queue()});
+  document.addEventListener('click',e=>{
+    if(e.target.closest('#addSpan,#addSupport,[data-add-load],#newBtn,#undoBtn,#redoBtn,.example,[data-remove-span],[data-remove-support],[data-remove-load]')){
+      queue();
+      // Adding/removing a structural item rebuilds the inputs and SVG first.
+      // Give that synchronous render a chance to settle before the first solve.
+      clearTimeout(retryTimer);
+      retryTimer=setTimeout(queue,180);
+    }
+  });
 
-  // Solve automatically after the current edit settles. If the user types again while
-  // Python is solving, the next pass catches the newest state.
-  setInterval(()=>{try{if(pending&&typeof solverReady!=='undefined'&&solverReady&&typeof solving!=='undefined'&&!solving&&typeof evaluate==='function'){pending=false;evaluate()}}catch(e){console.warn('BeamLab live solve:',e)}},120);
+  // A failed first solve used to clear `pending` before evaluate() completed.
+  // If the newly-added UDL was still settling, that transient failure was then
+  // never retried until the user edited another field. Keep the request pending
+  // until evaluate() has actually completed, and retry a short-lived transient
+  // failure automatically.
+  const runPending=()=>{
+    if(!pending||typeof solverReady==='undefined'||!solverReady||typeof solving==='undefined'||solving||typeof evaluate!=='function')return;
+    pending=false;
+    try{
+      const result=evaluate();
+      if(result&&typeof result.then==='function'){
+        result.catch(err=>{pending=true;console.warn('BeamLab live solve retry:',err)});
+      }
+    }catch(e){
+      pending=true;
+      console.warn('BeamLab live solve retry:',e);
+    }
+  };
+  setInterval(runPending,120);
   const boot=setInterval(()=>{try{if(typeof solverReady!=='undefined'&&solverReady){clearInterval(boot);pending=true}}catch(e){}},150);
 
   function overview(){
