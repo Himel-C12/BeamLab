@@ -85,5 +85,33 @@
   }
   const originalRenderChart=window.renderChart;window.renderChart=function(...args){originalRenderChart(...args);const id=args[0],samples=args[1];if(id==='sfd'||id==='bmd')annotateChart(id,samples);};
 
+  function formatForceResult(v) {
+    const value = displayValue(Number(v), 'force');
+    if (Math.abs(value) < EPS) return `0 ${unitLabel('force')}`;
+    return `${fmt(Math.abs(value), 3)} ${unitLabel('force')} (${value > 0 ? 'upwards' : 'downwards'})`;
+  }
+  function formatMomentResult(v) {
+    const value = displayValue(Number(v), 'moment');
+    if (Math.abs(value) < EPS) return `0 ${unitLabel('moment')}`;
+    return `${fmt(Math.abs(value), 3)} ${unitLabel('moment')} (${value > 0 ? 'CCW' : 'CW'})`;
+  }
+  const originalShowResults=window.showResults;
+  window.showResults=function(r){
+    originalShowResults(r);
+    const table=document.querySelector('#reactions table');
+    if(table) Array.from(table.querySelectorAll('tbody tr')).forEach(row=>{
+      const cells=row.children;
+      if(cells[3]) cells[3].textContent=formatForceResult(r.reactions?.[Number(cells[0]?.textContent)-1]?.vertical_kN ?? 0);
+      if(cells[4]) cells[4].textContent=formatMomentResult(r.reactions?.[Number(cells[0]?.textContent)-1]?.moment_kNm ?? 0);
+    });
+    const hingeTable=document.querySelector('#hingeChecks table');
+    if(hingeTable) Array.from(hingeTable.querySelectorAll('tbody tr')).forEach((row,i)=>{
+      const h=r.hinge_checks?.[i];
+      if(!h)return;
+      if(row.children[1])row.children[1].textContent=formatMomentResult(h.left_moment_kNm);
+      if(row.children[2])row.children[2].textContent=formatMomentResult(h.right_moment_kNm);
+    });
+  };
+
   const style=document.createElement('style');style.textContent=`#beamCanvas .point-arrow-head{fill:currentColor;stroke:none}#beamCanvas .moment-sign-symbol{font-size:48px!important;fill:currentColor;stroke:none;font-weight:400}#beamCanvas .moment-load-label{fill:currentColor}#beamCanvas .dimension-tick{stroke:currentColor;stroke-width:1.2;opacity:.8}#beamCanvas .dimension-point-label{font-size:11px}#beamCanvas .dimension-overall-line{stroke:currentColor;stroke-width:1;opacity:.65}.engineering-points{pointer-events:none}.eng-line{stroke-width:1.5;stroke-dasharray:6 4}.eng-dot{stroke:#fff;stroke-width:2}.eng-label{font-size:10px;font-weight:750;paint-order:stroke;stroke-width:3px;stroke-linejoin:round}.eng-danger{stroke:#ff6b6b;fill:#ff6b6b}.eng-label.eng-danger{fill:#ff9a9a;stroke:#0b1016}.eng-contra{stroke:#b69cff;fill:#b69cff}.eng-label.eng-contra{fill:#c8b8ff;stroke:#0b1016}`;document.head.appendChild(style);
 })();
