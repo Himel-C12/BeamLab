@@ -9,8 +9,8 @@ const fmt = (v,n=3) => Number(v).toFixed(n).replace(/\.0+$/,'').replace(/(\.\d*?
 const esc = v => String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 
 const initialState = {
-  spans: [{length:4,E:200,I:100000000}],
-  supports: [{id:1,type:'fixed',position:0,settlement:0}],
+  spans: [{length:6,E:200,I:100000000}],
+  supports: [{id:1,type:'fixed',position:6,settlement:0}],
   loads: [{id:1,type:'udl',value:8,value2:8,position:0,to:4}]
 };
 let state=clone(initialState), history=[], future=[];
