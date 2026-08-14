@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://himel-c12.github.io/BeamLab/sitemap.xml
