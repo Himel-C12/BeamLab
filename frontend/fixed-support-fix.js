@@ -11,13 +11,16 @@
 
     const fixed = (state.supports || []).filter(s => String(s.type) === 'fixed');
     const L = typeof totalLength === 'function' ? totalLength() : 0;
+    const pad = 70, width = 1100;
+    const sx = (width - 2 * pad) / Math.max(L, 1);
 
     fixed.forEach((s, i) => {
       const g = groups[i];
       if (!g) return;
       const x = Number(s.position);
+      const svgX = pad + x * sx;
       const isRightEnd = L > 0 && Math.abs(x - L) < 1e-8;
-      g.setAttribute('transform', isRightEnd ? `translate(${2 * x * (1030 / Math.max(L, 1))},0) scale(-1,1)` : '');
+      g.setAttribute('transform', isRightEnd ? `translate(${2 * svgX},0) scale(-1,1)` : '');
     });
   }
 
