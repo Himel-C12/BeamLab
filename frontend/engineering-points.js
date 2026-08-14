@@ -52,8 +52,6 @@
 
   function sfdDangerous(data, jumps) {
     const out = [];
-    // A point load/support reaction can make the SFD jump directly from + to -
-    // (or vice versa), so detect that at the actual jump location.
     for (const j of jumps || []) {
       if (j.side !== 'left') continue;
       const r = (jumps || []).find(k => Math.abs(Number(k.x)-Number(j.x)) < 1e-8 && k.side === 'right');
@@ -61,8 +59,6 @@
       const vl = Number(j.shear_kN), vr = Number(r.shear_kN);
       if (sign(vl) && sign(vr) && sign(vl) !== sign(vr)) out.push({x:Number(j.x), y:0});
     }
-
-    // Continuous zero crossings inside loaded spans.
     const jumpXs = new Set((jumps || []).map(j => Number(j.x).toFixed(8)));
     for (let i = 0; i < data.length - 1; i++) {
       const a = data[i], b = data[i+1];
@@ -78,9 +74,7 @@
 
   function momentContraflexure(data) {
     const out = zeroCrossings(data);
-    // A concentrated applied moment creates a jump in BMD. A sign change
-    // across that jump is not a contraflexure point, so exclude those x's.
-    const momentXs = new Set((window.state?.loads || []).filter(l => {
+    const momentXs = new Set((typeof state !== 'undefined' ? state.loads : []).filter(l => {
       const t = String(l.type || '').trim().toLowerCase().replaceAll(' ','_').replaceAll('-','_');
       return t === 'moment';
     }).map(l => Number(l.position).toFixed(8)));
@@ -99,7 +93,7 @@
     }
     const X = x => pad.l + (x-xmin)/(xmax-xmin||1)*(W-pad.l-pad.r);
     const Y = y => H-pad.b-(y-ymin)/(ymax-ymin)*(H-pad.t-pad.b);
-    return {X,Y,xmin,xmax,ymin,ymax};
+    return {X,Y};
   }
 
   function svgText(x,y,text,cls,anchor='start') {
@@ -107,12 +101,12 @@
   }
 
   function annotate(id) {
-    if (!window.lastResult?.diagrams?.samples?.length) return;
+    if (typeof lastResult === 'undefined' || !lastResult?.diagrams?.samples?.length) return;
     const svg = document.querySelector(`#${id} svg.chartSvg`);
     if (!svg) return;
     svg.querySelector('.engineering-points')?.remove();
 
-    const samples = window.lastResult.diagrams.samples;
+    const samples = lastResult.diagrams.samples;
     const data = id === 'sfd'
       ? samples.map(s=>({x:Number(s.x),y:Number(s.shear_kN)}))
       : samples.map(s=>({x:Number(s.x),y:Number(s.moment_kNm)}));
@@ -123,7 +117,7 @@
     let html = '';
 
     if (id === 'sfd') {
-      const points = sfdDangerous(clean, window.lastResult.diagrams.jumps || []);
+      const points = sfdDangerous(clean, lastResult.diagrams.jumps || []);
       points.forEach((p,i) => {
         const x = X(p.x), y = zeroY;
         const side = i % 2 ? 1 : -1;
@@ -144,7 +138,7 @@
       });
 
       const sfd = samples.map(s=>({x:Number(s.x),y:Number(s.shear_kN)})).filter(p=>isFinite(p.x)&&isFinite(p.y));
-      const dangerous = sfdDangerous(sfd, window.lastResult.diagrams.jumps || []);
+      const dangerous = sfdDangerous(sfd, lastResult.diagrams.jumps || []);
       dangerous.forEach((p,i) => {
         const m = interpolate(clean, p.x), x = X(p.x), y = Y(m);
         const side = i % 2 ? -1 : 1;
@@ -169,9 +163,9 @@
       .engineering-point-line{stroke-width:1.4;stroke-dasharray:6 4;pointer-events:none}
       .engineering-point{stroke:#fff;stroke-width:2;pointer-events:none}
       .engineering-point-label{font-size:10px;font-weight:750;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round;pointer-events:none}
-      .engineering-danger{stroke:#ef4444;fill:#ef4444;color:#dc2626}
+      .engineering-danger{stroke:#ef4444;fill:#ef4444}
       .engineering-point-label.engineering-danger{fill:#dc2626}
-      .engineering-contra{stroke:#8b5cf6;fill:#8b5cf6;color:#7c3aed}
+      .engineering-contra{stroke:#8b5cf6;fill:#8b5cf6}
       .engineering-point-label.engineering-contra{fill:#7c3aed}
       body.dark .engineering-point{stroke:#111820}
       body.dark .engineering-point-label{stroke:#0b1016}
@@ -189,7 +183,14 @@
     annotate('bmd');
   }
 
-  new MutationObserver(() => setTimeout(scan, 0)).observe(document.body,{childList:true,subtree:true});
+  const observer = new MutationObserver(records => {
+    const chartChanged = records.some(r => [...r.addedNodes].some(n =>
+      n.nodeType === 1 && !n.classList?.contains('engineering-points') &&
+      (n.matches?.('svg.chartSvg') || n.querySelector?.('svg.chartSvg'))
+    ));
+    if (chartChanged) setTimeout(scan, 0);
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
   setTimeout(scan,500);
   setTimeout(scan,1500);
 })();
