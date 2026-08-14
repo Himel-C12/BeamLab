@@ -3,46 +3,62 @@
 */
 (() => {
   const EPS = 1e-9;
+  const JUMP_EPS = 1e-7;
   const num = v => Number(v);
   const sign = v => Math.abs(num(v)) < EPS ? 0 : (num(v) > 0 ? 1 : -1);
 
   function uniqueByX(points) {
     points.sort((a,b) => a.x - b.x);
-    return points.filter((p,i) => i === 0 || Math.abs(p.x - points[i-1].x) > 1e-7);
+    return points.filter((p,i) => i === 0 || Math.abs(p.x - points[i-1].x) > JUMP_EPS);
   }
 
   function zeroCrossings(data, excluded = []) {
     const out = [];
+    if (!data?.length) return out;
+
     for (let i = 0; i < data.length - 1; i++) {
-      const a = data[i], b = data[i+1];
+      const a = data[i], b = data[i + 1];
       const sa = sign(a.y), sb = sign(b.y);
-      if (sa === 0) {
-        if (i > 0 && sb !== 0 && sign(data[i-1].y) !== sb &&
-            !excluded.some(x => Math.abs(x - a.x) < 1e-7)) {
-          out.push({x:a.x, y:0});
-        }
-        continue;
-      }
-      if (sb === 0 || sa === sb) continue;
+
+      // Never interpolate through a discontinuity. The shear has a jump there,
+      // so a zero crossing must be decided from the two one-sided values.
+      if (excluded.some(x => Math.abs(x - a.x) < JUMP_EPS || Math.abs(x - b.x) < JUMP_EPS)) continue;
+
+      // A zero plateau is not a sign change. In particular, a support at the
+      // end of a zero-shear region must not create a fake dangerous section at
+      // the last sampled point before the support.
+      if (sa === 0 || sb === 0) continue;
+      if (sa === sb) continue;
+
       const t = -a.y / (b.y - a.y);
       const x = a.x + (b.x - a.x) * t;
-      if (!excluded.some(px => Math.abs(px - x) < 1e-7)) out.push({x, y:0});
+      if (!excluded.some(px => Math.abs(px - x) < JUMP_EPS)) out.push({x, y:0});
     }
     return uniqueByX(out);
   }
 
   function dangerousSections(sfd, jumps = []) {
-    const out = [], excluded = [];
+    const out = [];
+    const jumpXs = uniqueByX(jumps.map(j => ({x:num(j.x)}))).map(p => p.x);
+
+    // A concentrated action can make V jump directly from + to - or - to +.
+    // That is a genuine extremum of the BMD and therefore a dangerous section.
     for (const j of jumps) {
       if (j.side !== 'left') continue;
-      const r = jumps.find(k => k.side === 'right' && Math.abs(k.x - j.x) < 1e-8);
+      const r = jumps.find(k => k.side === 'right' && Math.abs(num(k.x) - num(j.x)) < JUMP_EPS);
       if (!r) continue;
-      excluded.push(num(j.x));
-      if (sign(j.y) !== 0 && sign(r.y) !== 0 && sign(j.y) !== sign(r.y)) {
+      const left = sign(j.shear_kN ?? j.y);
+      const right = sign(r.shear_kN ?? r.y);
+      if (left !== 0 && right !== 0 && left !== right) {
         out.push({x:num(j.x), y:0});
       }
     }
-    out.push(...zeroCrossings(sfd, excluded));
+
+    // For continuous portions of the beam, V = dM/dx. A dangerous section is
+    // therefore an interior point where V changes sign. Do not interpolate
+    // across supports or point-load jumps, and do not treat a zero-shear
+    // plateau as a sign change.
+    out.push(...zeroCrossings(sfd, jumpXs));
     return uniqueByX(out);
   }
 
