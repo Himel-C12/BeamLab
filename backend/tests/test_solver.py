@@ -50,3 +50,42 @@ def test_unstable_model_is_rejected():
         assert "unstable" in str(exc).lower() or "restrained" in str(exc).lower()
     else:
         raise AssertionError("An unstable beam must not produce a result")
+
+
+def test_bmd_jump_rules_for_mixed_loading():
+    from diagrams import build_diagrams
+
+    model = {
+        "spans": [{"length": 24}],
+        "loads": [
+            {"type": "udl", "value": 2, "value2": 2, "position": 0, "to": 6},
+            {"type": "moment", "value": -42.5, "position": 6},
+            {"type": "point", "value": 10, "position": 11},
+            {"type": "udl", "value": 2, "value2": 2, "position": 16, "to": 24},
+            {"type": "moment", "value": -12, "position": 24},
+        ],
+    }
+    result = {
+        "reactions": [
+            {"type": "roller", "position": 6, "vertical_kN": 8.75, "moment_kNm": 0},
+            {"type": "roller", "position": 16, "vertical_kN": 29.25, "moment_kNm": 0},
+        ],
+        "elements": [],
+        "nodes": [],
+        "hinge_checks": [],
+    }
+    jumps = build_diagrams(model, result)["jumps"]
+
+    def at(position):
+        return [j for j in jumps if abs(j["x"] - position) < 1e-9]
+
+    # End of the left UDL, then a clockwise 42.5 kN-m couple at x=6.
+    assert abs(at(6)[1]["moment_kNm"] - at(6)[0]["moment_kNm"] - 42.5) < 1e-8
+    # A point force changes shear but leaves moment continuous.
+    assert abs(at(11)[1]["moment_kNm"] - at(11)[0]["moment_kNm"]) < 1e-8
+    assert abs(at(11)[1]["shear_kN"] - at(11)[0]["shear_kN"] + 10) < 1e-8
+    # A roller reaction changes shear but leaves moment continuous.
+    assert abs(at(16)[1]["moment_kNm"] - at(16)[0]["moment_kNm"]) < 1e-8
+    # The end couple changes moment but cannot change shear.
+    assert abs(at(24)[1]["moment_kNm"] - at(24)[0]["moment_kNm"] - 12) < 1e-8
+    assert abs(at(24)[1]["shear_kN"] - at(24)[0]["shear_kN"]) < 1e-8
