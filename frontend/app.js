@@ -61,7 +61,22 @@ function clearResults(){
 }
 
 function niceScale(min,max){let span=max-min;if(!isFinite(span)||span===0){span=Math.max(1,Math.abs(max)||1);min-=span/2;max+=span/2}const p=span*.08;return [min-p,max+p]}
-function chartData(samples,key,jumps=[]){\n  const jumpKey=key==='moment_kNm'?'moment_kNm':key==='shear_kN'?'shear_kN':null;\n  if(!jumpKey||!jumps.length)return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));\n  const positions=[...new Set(jumps.map(j=>Number(j.x)).filter(Number.isFinite))];\n  const regular=samples.filter(s=>!positions.some(x=>Math.abs(Number(s.x)-x)<1e-8)).map(s=>({x:Number(s.x),y:Number(s[key]),order:1}));\n  const limits=jumps.filter(j=>j.side==='left'||j.side==='right').map(j=>({x:Number(j.x),y:Number(j[jumpKey]),order:j.side==='left'?0:2}));\n  return [...regular,...limits].filter(p=>isFinite(p.x)&&isFinite(p.y)).sort((a,b)=>a.x-b.x||a.order-b.order);\n}
+function chartData(samples,key,jumps=[]){
+  const jumpKey=key==='moment_kNm'?'moment_kNm':key==='shear_kN'?'shear_kN':null;
+  if(!jumpKey||!jumps.length){
+    return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));
+  }
+  const positions=[...new Set(jumps.map(j=>Number(j.x)).filter(Number.isFinite))];
+  const regular=samples
+    .filter(s=>!positions.some(x=>Math.abs(Number(s.x)-x)<1e-8))
+    .map(s=>({x:Number(s.x),y:Number(s[key]),order:1}));
+  const limits=jumps
+    .filter(j=>j.side==='left'||j.side==='right')
+    .map(j=>({x:Number(j.x),y:Number(j[jumpKey]),order:j.side==='left'?0:2}));
+  return [...regular,...limits]
+    .filter(p=>isFinite(p.x)&&isFinite(p.y))
+    .sort((a,b)=>a.x-b.x||a.order-b.order);
+}
 function nearestPoint(data,x){return data.reduce((a,b)=>Math.abs(b.x-x)<Math.abs(a.x-x)?b:a,data[0]);}
 
 function renderChart(id,samples,key,label,type,features=[],jumps=[]){
