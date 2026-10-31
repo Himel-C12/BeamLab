@@ -57,35 +57,50 @@ def _beam_response(el: dict, x: float) -> tuple[float, float]:
 
 
 def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> dict:
+    """Build SFD/BMD from solved reactions and applied loads.
+
+    At a station, samples use the right-hand limit. ``jumps`` preserves
+    both one-sided values for concentrated actions and support reactions.
+    """
     supports = result.get("reactions", [])
     loads = model.get("loads", [])
     total = sum(float(s["length"]) for s in model.get("spans", []))
+
+    def load_kind(load: dict) -> str:
+        return _kind(load.get("type"))
+
     boundaries = {0.0, total}
-    for s in supports:
-        boundaries.add(float(s["position"]))
+    for support in supports:
+        boundaries.add(float(support["position"]))
     for load in loads:
         boundaries.add(float(load["position"]))
-        if _kind(load.get("type")) in {"udl", "distributed", "uniform"}:
+        if load_kind(load) in {"udl", "distributed", "uniform"}:
             boundaries.add(float(load["to"]))
     xs = sorted(boundaries)
 
-    def shear_moment(x):
+    def shear_moment(x: float, *, include_at: bool = True) -> tuple[float, float]:
+        """Internal shear/moment at x; include_at selects the right limit."""
         V = M = 0.0
-        for r in supports:
-            p = float(r["position"])
-            if p <= x + 1e-10:
-                R = float(r.get("vertical_kN", 0.0))
-                V += R
-                M -= float(r.get("moment_kNm", 0.0))
-                M += R * (x - p)
+        eps = 1e-10
+        for support in supports:
+            p = float(support["position"])
+            active = p < x - eps or (include_at and p <= x + eps)
+            if active:
+                reaction = float(support.get("vertical_kN", 0.0))
+                V += reaction
+                M += reaction * (x - p)
+                # A support reaction couple acts as an external couple.
+                M -= float(support.get("moment_kNm", 0.0))
         for load in loads:
-            t = _kind(load.get("type"))
+            t = load_kind(load)
             p = float(load.get("position", 0.0))
-            if t in {"point", "point_load"} and p <= x + 1e-10:
-                P = -_point_vertical(load)
-                V += P
-                M += P * (x - p)
-            elif t == "moment" and p <= x + 1e-10:
+            active = p < x - eps or (include_at and p <= x + eps)
+            if t in {"point", "point_load"} and active:
+                force = -_point_vertical(load)
+                V += force
+                M += force * (x - p)
+            elif t == "moment" and active:
+                # A concentrated couple jumps M, but not V.
                 M -= float(load.get("value", 0.0))
             elif t in {"udl", "distributed", "uniform"}:
                 dv, dm = _udl_result(load, x)
@@ -96,31 +111,55 @@ def build_diagrams(model: dict, result: dict, samples_per_segment: int = 16) -> 
     elements = result.get("elements", [])
     if not elements:
         nodes = result.get("nodes", [])
-        for a, b in zip(nodes, nodes[1:]):
-            elements.append({"x0": a["x"], "x1": b["x"], "v0_mm": a["deflection_mm"], "v1_mm": b["deflection_mm"], "theta0_rad": a.get("rotation_rad_right") or 0.0, "theta1_rad": b.get("rotation_rad_left") or 0.0})
+        for left, right in zip(nodes, nodes[1:]):
+            elements.append({
+                "x0": left["x"], "x1": right["x"],
+                "v0_mm": left["deflection_mm"],
+                "v1_mm": right["deflection_mm"],
+                "theta0_rad": left.get("rotation_rad_right") or 0.0,
+                "theta1_rad": right.get("rotation_rad_left") or 0.0,
+            })
 
     samples = []
     for a, b in zip(xs, xs[1:]):
         for j in range(samples_per_segment):
             x = a + (b - a) * j / samples_per_segment
             V, M = shear_moment(x)
-            el = next((e for e in elements if float(e["x0"]) - 1e-10 <= x <= float(e["x1"]) + 1e-10), None)
+            el = next((e for e in elements
+                       if float(e["x0"]) - 1e-10 <= x <= float(e["x1"]) + 1e-10), None)
             d, rot = _beam_response(el, x) if el else (0.0, 0.0)
-            samples.append({"x": x, "shear_kN": V, "moment_kNm": M, "deflection_mm": d, "rotation_rad": rot})
+            samples.append({
+                "x": x, "shear_kN": V, "moment_kNm": M,
+                "deflection_mm": d, "rotation_rad": rot,
+            })
     if xs:
         x = xs[-1]
         V, M = shear_moment(x)
-        el = next((e for e in reversed(elements) if float(e["x0"]) - 1e-10 <= x <= float(e["x1"]) + 1e-10), None)
+        el = next((e for e in reversed(elements)
+                   if float(e["x0"]) - 1e-10 <= x <= float(e["x1"]) + 1e-10), None)
         d, rot = _beam_response(el, x) if el else (0.0, 0.0)
-        samples.append({"x": x, "shear_kN": V, "moment_kNm": M, "deflection_mm": d, "rotation_rad": rot})
+        samples.append({
+            "x": x, "shear_kN": V, "moment_kNm": M,
+            "deflection_mm": d, "rotation_rad": rot,
+        })
 
-    jump_positions = {float(r["position"]) for r in supports if _kind(r.get("type")) != "internal_hinge"}
-    jump_positions.update(float(load["position"]) for load in loads if _kind(load.get("type")) in {"point", "point_load"})
+    # Preserve left/right limits for every concentrated force or couple.
+    jump_positions = {
+        float(s["position"]) for s in supports
+        if abs(float(s.get("vertical_kN", 0.0))) > 1e-12
+        or abs(float(s.get("moment_kNm", 0.0))) > 1e-12
+    }
+    jump_positions.update(float(load["position"]) for load in loads
+                          if load_kind(load) in {"point", "point_load", "moment"})
     jumps = []
     for p in sorted(jump_positions):
-        vl, ml = shear_moment(max(0.0, p - 1e-8))
-        vr, mr = shear_moment(p)
-        jumps += [{"x": p, "shear_kN": vl, "moment_kNm": ml, "side": "left"}, {"x": p, "shear_kN": vr, "moment_kNm": mr, "side": "right"}]
+        vl, ml = shear_moment(p, include_at=False)
+        vr, mr = shear_moment(p, include_at=True)
+        jumps.extend([
+            {"x": p, "shear_kN": vl, "moment_kNm": ml, "side": "left"},
+            {"x": p, "shear_kN": vr, "moment_kNm": mr, "side": "right"},
+        ])
 
-    hinges = [{"x": h["position"], "moment_kNm": 0.0} for h in result.get("hinge_checks", [])]
+    hinges = [{"x": h["position"], "moment_kNm": 0.0}
+              for h in result.get("hinge_checks", [])]
     return {"samples": samples, "jumps": jumps, "hinges": hinges}
