@@ -79,13 +79,64 @@ def test_bmd_jump_rules_for_mixed_loading():
     def at(position):
         return [j for j in jumps if abs(j["x"] - position) < 1e-9]
 
-    # End of the left UDL, then a clockwise 42.5 kN-m couple at x=6.
     assert abs(at(6)[1]["moment_kNm"] - at(6)[0]["moment_kNm"] - 42.5) < 1e-8
-    # A point force changes shear but leaves moment continuous.
     assert abs(at(11)[1]["moment_kNm"] - at(11)[0]["moment_kNm"]) < 1e-8
     assert abs(at(11)[1]["shear_kN"] - at(11)[0]["shear_kN"] + 10) < 1e-8
-    # A roller reaction changes shear but leaves moment continuous.
     assert abs(at(16)[1]["moment_kNm"] - at(16)[0]["moment_kNm"]) < 1e-8
-    # The end couple changes moment but cannot change shear.
     assert abs(at(24)[1]["moment_kNm"] - at(24)[0]["moment_kNm"] - 12) < 1e-8
     assert abs(at(24)[1]["shear_kN"] - at(24)[0]["shear_kN"]) < 1e-8
+
+
+def test_solved_simply_supported_full_span_udl_diagrams():
+    from diagrams import build_diagrams
+
+    model = {
+        "spans": [{"length": 10, "E": 200, "I": 1e8}],
+        "supports": [
+            {"type": "pin", "position": 0},
+            {"type": "roller", "position": 10},
+        ],
+        "loads": [{"type": "udl", "value": 5, "position": 0, "to": 10}],
+    }
+    solved = solve_beam(model)
+    reactions = solved["reactions"]
+    assert abs(reactions[0]["vertical_kN"] - 25.0) < 1e-7
+    assert abs(reactions[1]["vertical_kN"] - 25.0) < 1e-7
+    assert abs(solved["equilibrium"]["vertical_error_kN"]) < 1e-7
+
+    diagrams = build_diagrams(model, solved)
+    mid = min(diagrams["samples"], key=lambda s: abs(s["x"] - 5.0))
+    assert abs(mid["moment_kNm"] - 62.5) < 1e-6
+
+    end_jump = [j for j in diagrams["jumps"] if abs(j["x"] - 10.0) < 1e-9]
+    assert len(end_jump) == 2
+    assert abs(end_jump[0]["moment_kNm"]) < 1e-7
+    assert abs(end_jump[1]["moment_kNm"]) < 1e-7
+    assert abs(end_jump[0]["shear_kN"] + 25.0) < 1e-7
+    assert abs(end_jump[1]["shear_kN"]) < 1e-7
+
+
+def test_solved_cantilever_tip_load_bmd_and_fixed_reaction_couple():
+    from diagrams import build_diagrams
+
+    model = {
+        "spans": [{"length": 6, "E": 200, "I": 1e8}],
+        "supports": [{"type": "fixed", "position": 0}],
+        "loads": [{"type": "point", "value": 12, "position": 6}],
+    }
+    solved = solve_beam(model)
+    reaction = solved["reactions"][0]
+    assert abs(reaction["vertical_kN"] - 12.0) < 1e-7
+    assert abs(abs(reaction["moment_kNm"]) - 72.0) < 1e-7
+    assert abs(solved["equilibrium"]["vertical_error_kN"]) < 1e-7
+
+    diagrams = build_diagrams(model, solved)
+    mid = min(diagrams["samples"], key=lambda s: abs(s["x"] - 3.0))
+    assert abs(mid["shear_kN"] - 12.0) < 1e-7
+    assert abs(mid["moment_kNm"] + 36.0) < 1e-6
+    tip = [j for j in diagrams["jumps"] if abs(j["x"] - 6.0) < 1e-9]
+    assert len(tip) == 2
+    assert abs(tip[0]["moment_kNm"]) < 1e-7
+    assert abs(tip[1]["moment_kNm"]) < 1e-7
+    assert abs(tip[0]["shear_kN"] - 12.0) < 1e-7
+    assert abs(tip[1]["shear_kN"]) < 1e-7
