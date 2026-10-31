@@ -61,12 +61,12 @@ function clearResults(){
 }
 
 function niceScale(min,max){let span=max-min;if(!isFinite(span)||span===0){span=Math.max(1,Math.abs(max)||1);min-=span/2;max+=span/2}const p=span*.08;return [min-p,max+p]}
-function chartData(samples,key){return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));}
+function chartData(samples,key,jumps=[]){\n  const jumpKey=key==='moment_kNm'?'moment_kNm':key==='shear_kN'?'shear_kN':null;\n  if(!jumpKey||!jumps.length)return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));\n  const positions=[...new Set(jumps.map(j=>Number(j.x)).filter(Number.isFinite))];\n  const regular=samples.filter(s=>!positions.some(x=>Math.abs(Number(s.x)-x)<1e-8)).map(s=>({x:Number(s.x),y:Number(s[key]),order:1}));\n  const limits=jumps.filter(j=>j.side==='left'||j.side==='right').map(j=>({x:Number(j.x),y:Number(j[jumpKey]),order:j.side==='left'?0:2}));\n  return [...regular,...limits].filter(p=>isFinite(p.x)&&isFinite(p.y)).sort((a,b)=>a.x-b.x||a.order-b.order);\n}
 function nearestPoint(data,x){return data.reduce((a,b)=>Math.abs(b.x-x)<Math.abs(a.x-x)?b:a,data[0]);}
 
 function renderChart(id,samples,key,label,type,features=[],jumps=[]){
   const el=$('#'+id);if(!samples?.length){el.innerHTML='<div class="empty">No data.</div>';return;}
-  const data=chartData(samples,key), W=900,H=330,pad={l:58,r:28,t:28,b:50};let xmin=Math.min(...data.map(d=>d.x)),xmax=Math.max(...data.map(d=>d.x));let ymin=Math.min(...data.map(d=>d.y),0),ymax=Math.max(...data.map(d=>d.y),0);[ymin,ymax]=niceScale(ymin,ymax);
+  const data=chartData(samples,key,(type==='sfd'||type==='bmd')?jumps:[]), W=900,H=330,pad={l:58,r:28,t:28,b:50};let xmin=Math.min(...data.map(d=>d.x)),xmax=Math.max(...data.map(d=>d.x));let ymin=Math.min(...data.map(d=>d.y),0),ymax=Math.max(...data.map(d=>d.y),0);[ymin,ymax]=niceScale(ymin,ymax);
   const X=x=>pad.l+(x-xmin)/(xmax-xmin||1)*(W-pad.l-pad.r),Y=y=>H-pad.b-(y-ymin)/(ymax-ymin)*(H-pad.t-pad.b),zero=Y(0);
   const color={sfd:'#2d7ff0',bmd:'#20c9a6',deflection:'#ff9f00',rotation:'#e568f2'}[type]||'#2d7ff0';
   const areaClass={sfd:'chart-area-sfd',bmd:'chart-area-bmd',deflection:'chart-area-deflection',rotation:'chart-area-rotation'}[type]||'chart-area-sfd';
