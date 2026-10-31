@@ -61,12 +61,27 @@ function clearResults(){
 }
 
 function niceScale(min,max){let span=max-min;if(!isFinite(span)||span===0){span=Math.max(1,Math.abs(max)||1);min-=span/2;max+=span/2}const p=span*.08;return [min-p,max+p]}
-function chartData(samples,key){return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));}
+function chartData(samples,key,jumps=[]){
+  const jumpKey=key==='moment_kNm'?'moment_kNm':key==='shear_kN'?'shear_kN':null;
+  if(!jumpKey||!jumps.length){
+    return samples.map(s=>({x:Number(s.x),y:Number(s[key])})).filter(p=>isFinite(p.x)&&isFinite(p.y));
+  }
+  const positions=[...new Set(jumps.map(j=>Number(j.x)).filter(Number.isFinite))];
+  const regular=samples
+    .filter(s=>!positions.some(x=>Math.abs(Number(s.x)-x)<1e-8))
+    .map(s=>({x:Number(s.x),y:Number(s[key]),order:1}));
+  const limits=jumps
+    .filter(j=>j.side==='left'||j.side==='right')
+    .map(j=>({x:Number(j.x),y:Number(j[jumpKey]),order:j.side==='left'?0:2}));
+  return [...regular,...limits]
+    .filter(p=>isFinite(p.x)&&isFinite(p.y))
+    .sort((a,b)=>a.x-b.x||a.order-b.order);
+}
 function nearestPoint(data,x){return data.reduce((a,b)=>Math.abs(b.x-x)<Math.abs(a.x-x)?b:a,data[0]);}
 
 function renderChart(id,samples,key,label,type,features=[],jumps=[]){
   const el=$('#'+id);if(!samples?.length){el.innerHTML='<div class="empty">No data.</div>';return;}
-  const data=chartData(samples,key), W=900,H=330,pad={l:58,r:28,t:28,b:50};let xmin=Math.min(...data.map(d=>d.x)),xmax=Math.max(...data.map(d=>d.x));let ymin=Math.min(...data.map(d=>d.y),0),ymax=Math.max(...data.map(d=>d.y),0);[ymin,ymax]=niceScale(ymin,ymax);
+  const data=chartData(samples,key,(type==='sfd'||type==='bmd')?jumps:[]), W=900,H=330,pad={l:58,r:28,t:28,b:50};let xmin=Math.min(...data.map(d=>d.x)),xmax=Math.max(...data.map(d=>d.x));let ymin=Math.min(...data.map(d=>d.y),0),ymax=Math.max(...data.map(d=>d.y),0);[ymin,ymax]=niceScale(ymin,ymax);
   const X=x=>pad.l+(x-xmin)/(xmax-xmin||1)*(W-pad.l-pad.r),Y=y=>H-pad.b-(y-ymin)/(ymax-ymin)*(H-pad.t-pad.b),zero=Y(0);
   const color={sfd:'#2d7ff0',bmd:'#20c9a6',deflection:'#ff9f00',rotation:'#e568f2'}[type]||'#2d7ff0';
   const areaClass={sfd:'chart-area-sfd',bmd:'chart-area-bmd',deflection:'chart-area-deflection',rotation:'chart-area-rotation'}[type]||'chart-area-sfd';
@@ -78,7 +93,7 @@ function renderChart(id,samples,key,label,type,features=[],jumps=[]){
   const featureLines=showFeatures?featureXs.map(x=>`<line x1="${X(x)}" y1="${pad.t}" x2="${X(x)}" y2="${H-pad.b}" class="chart-feature"/>`).join(''):'';
   const supports=showFeatures?features.filter(f=>f.support).map(f=>`<path d="M ${X(f.x)-7} ${zero+5} L ${X(f.x)} ${zero-7} L ${X(f.x)+7} ${zero+5} Z" class="chart-support"/>`).join(''):'';
   const loadLines=showFeatures?features.filter(f=>f.load).map(f=>`<line x1="${X(f.x)}" y1="${pad.t}" x2="${X(f.x)}" y2="${H-pad.b}" class="chart-loadline"/>`).join(''):'';
-  const jumpLines=showFeatures?jumps.reduce((html,j,i)=>{if(j.side!=='left')return html;const right=jumps.find(k=>Math.abs(k.x-j.x)<1e-8&&k.side==='right');if(!right)return html;return html+`<line x1="${X(j.x)}" y1="${Y(j.y)}" x2="${X(j.x)}" y2="${Y(right.y)}" class="chart-loadline"/>`;},''):'';
+  const chartJumps=jumps.map(j=>({...j,y:Number(j[type==='bmd'?'moment_kNm':'shear_kN'])}));const jumpLines=showFeatures?chartJumps.reduce((html,j,i)=>{if(j.side!=='left')return html;const right=chartJumps.find(k=>Math.abs(k.x-j.x)<1e-8&&k.side==='right');if(!right)return html;return html+`<line x1="${X(j.x)}" y1="${Y(j.y)}" x2="${X(j.x)}" y2="${Y(right.y)}" class="chart-loadline"/>`;},''):'';
   const max=data.reduce((a,b)=>Math.abs(b.y)>Math.abs(a.y)?b:a,data[0]);
   const maxLabel=`Max: ${fmt(displayChartY(max.y,type),type==='rotation'?3:3)} ${chartUnit(type)}`;
   let labels='';if(showValues){const chosen=[];features.forEach(f=>{const n=nearestPoint(data,Number(f.x));if(n)chosen.push(n)});[data[0],data[data.length-1],max,...chosen].forEach(n=>{if(n&&!chosen.some(c=>c.x===n.x)||n===max){labels+=`<text x="${X(n.x)}" y="${Y(n.y)-8}" text-anchor="middle" class="chart-value">${fmt(displayChartY(n.y,type),type==='rotation'?3:3)} ${chartUnit(type)}</text>`}})}
